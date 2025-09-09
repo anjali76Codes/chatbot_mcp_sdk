@@ -11,7 +11,7 @@ interface SearchIndexItem {
   keywords: string[];
 }
 
-export class SearchIndexGenerator {
+ class SearchIndexGenerator {
   private mcpClient: ContentstackMCPClient;
 
   constructor() {
@@ -157,6 +157,5 @@ private extractAssetsFromEntry(entry: any): any[] {
   }
 }
 
-// Run the generator
-const generator = new SearchIndexGenerator();
-generator.generateIndex();
+
+export { SearchIndexGenerator };

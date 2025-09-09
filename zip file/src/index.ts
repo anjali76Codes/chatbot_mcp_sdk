@@ -57,7 +57,7 @@ async function main(): Promise<void> {
     `Here is the raw tool output: ${toolResult}. Please explain it in a clear and conversational way.`
   );
 } else if (cleaned.includes('entries')) {
-  const toolResult = await chatAgent.callTool('get_all_entries', { content_type_uid: 'page' });
+  const toolResult = await chatAgent.callTool('get_all_entries', { content_type_uid: 'product' });
   response = await chatAgent.sendMessage(
     `Here is the raw tool output: ${toolResult}. Please summarize the entries for the user.`
   );

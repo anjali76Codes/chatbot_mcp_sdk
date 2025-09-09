@@ -2,7 +2,10 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ContentstackMCPClient } from './mcp-client.js';
 import { SearchService } from './search-service.js';
+import { SearchIndexGenerator } from './generate-search-index.js';
 import * as dotenv from 'dotenv';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 dotenv.config();
 
@@ -17,11 +20,13 @@ export class ContentstackChatAgent {
   private searchService: SearchService;
   private conversationHistory: ChatMessage[] = [];
   private generalPatterns: RegExp[];
+  private reindexInterval: NodeJS.Timeout | null = null;
+  private lastIndexUpdate: Date | null = null;
 
   constructor() {
     this.model = new ChatGoogleGenerativeAI({
       apiKey: process.env.GOOGLE_API_KEY!,
-      model: 'gemini-1.5-flash', // Faster model
+      model: 'gemini-2.5-pro', // Faster model
       temperature: 0.3, // More deterministic
     });
 
@@ -44,8 +49,63 @@ export class ContentstackChatAgent {
   async initialize(): Promise<void> {
     console.log('🤖 Initializing Chat Agent...');
     await this.mcpClient.connect();
-    await this.searchService.initialize(); // Initialize search service
+    
+    // Auto-generate index on startup
+    console.log('📝 Generating search index...');
+    await this.generateSearchIndex();
+    
+    await this.searchService.initialize();
+    
+    // Start periodic re-indexing (every 30 minutes)
+    this.startPeriodicReindexing(30 * 60 * 1000);
+    
     console.log('✅ Chat Agent ready!');
+  }
+
+  private async generateSearchIndex(): Promise<void> {
+    try {
+      const indexGenerator = new SearchIndexGenerator();
+      await indexGenerator.generateIndex();
+      this.lastIndexUpdate = new Date();
+      console.log('✅ Search index generated successfully');
+    } catch (error) {
+      console.warn('⚠️ Could not generate search index, using existing one if available:', error);
+      // Continue with existing index or empty index
+    }
+  }
+
+  private startPeriodicReindexing(intervalMs: number): void {
+    this.reindexInterval = setInterval(async () => {
+      console.log('🔄 Periodic search index update...');
+      await this.generateSearchIndex();
+      await this.searchService.initialize(); // Reload the updated index
+    }, intervalMs);
+  }
+
+  private getInstantGeneralResponse(message: string): string | null {
+    const cleaned = message.toLowerCase().trim();
+    
+    const instantResponses: {pattern: RegExp, response: string}[] = [
+      {pattern: /^(hi|hello|hey|greetings)/i, response: "Hello! 👋 How can I help you with Contentstack today?"},
+      {pattern: /^(good morning)/i, response: "Good morning! ☀️ How can I assist you with Contentstack?"},
+      {pattern: /^(good afternoon)/i, response: "Good afternoon! 🌤️ What can I help you with regarding Contentstack?"},
+      {pattern: /^(good evening)/i, response: "Good evening! 🌙 How can I assist you with Contentstack?"},
+      {pattern: /^(how are you|how's it going|what's up)/i, response: "I'm doing great, thanks for asking! 😊 How can I help you with Contentstack today?"},
+      {pattern: /^(thanks|thank you|appreciate it|cheers)/i, response: "You're welcome! 😊 Is there anything else I can help you with?"},
+      {pattern: /^(who are you|what can you do|what are you)/i, response: "I'm a Contentstack assistant! I can help you find content, assets, and answer questions about your Contentstack data. What would you like to know?"},
+      {pattern: /^(your name)/i, response: "I'm your Contentstack Assistant! 🤖 How can I help you today?"},
+      {pattern: /^(bye|goodbye|see you|exit|quit)/i, response: "Goodbye! 👋 Feel free to come back if you have more questions about Contentstack!"},
+      {pattern: /^(help|support)/i, response: "I can help you find content, assets, and answer questions about your Contentstack data. What would you like to know?"},
+      {pattern: /^(what is this|what is contentstack)/i, response: "Contentstack is a headless CMS that helps you manage and deliver content across multiple channels. How can I assist you with it?"}
+    ];
+
+    for (const {pattern, response} of instantResponses) {
+      if (pattern.test(cleaned)) {
+        return response;
+      }
+    }
+    
+    return null; // No instant match found
   }
 
   private fastContentTypeDetection(userQuery: string): string {
@@ -53,15 +113,20 @@ export class ContentstackChatAgent {
     
     if (query.includes('asset') || query.includes('image') || query.includes('file')) return 'asset';
     if (query.includes('content type') || query.includes('content-type')) return 'content_type';
-    if (query.includes('entry') || query.includes('page') || query.includes('blog')) return 'page';
     
-    // Simple keyword matching instead of LLM call
-    if (query.includes('product')) return 'product';
+    // ==== CUSTOMIZE THIS FOR YOUR JEWELRY WEBSITE ====
+    // Prioritize and default to 'product' since that's your main content
+    if (query.includes('product') || query.includes('jewelry') || query.includes('necklace') || query.includes('earring') || query.includes('ring') || query.includes('bracelet') || query.includes('watch')) return 'product';
+    // ================================================
+
+    // Keep other fallbacks
+    if (query.includes('entry') || query.includes('page') || query.includes('blog')) return 'page';
     if (query.includes('blog')) return 'blog_post';
     if (query.includes('article')) return 'article';
     if (query.includes('faq') || query.includes('question')) return 'faq';
     
-    return 'page'; // default
+    // !! CRITICAL FIX !! Change the default to 'product'
+    return 'product'; // NOW defaults to YOUR content type
   }
 
   private isGeneralMessage(message: string): boolean {
@@ -123,63 +188,33 @@ YOUR RESPONSE:`.trim();
       .trim();
   }
 
-// Add this method to your class
-private getInstantGeneralResponse(message: string): string | null {
-  const cleaned = message.toLowerCase().trim();
-  
-  const instantResponses: {pattern: RegExp, response: string}[] = [
-    {pattern: /^(hi|hello|hey|greetings)/i, response: "Hello! 👋 How can I help you with Contentstack today?"},
-    {pattern: /^(good morning)/i, response: "Good morning! ☀️ How can I assist you with Contentstack?"},
-    {pattern: /^(good afternoon)/i, response: "Good afternoon! 🌤️ What can I help you with regarding Contentstack?"},
-    {pattern: /^(good evening)/i, response: "Good evening! 🌙 How can I assist you with Contentstack?"},
-    {pattern: /^(how are you|how's it going|what's up)/i, response: "I'm doing great, thanks for asking! 😊 How can I help you with Contentstack today?"},
-    {pattern: /^(thanks|thank you|appreciate it|cheers)/i, response: "You're welcome! 😊 Is there anything else I can help you with?"},
-    {pattern: /^(who are you|what can you do|what are you)/i, response: "I'm a Contentstack assistant! I can help you find content, assets, and answer questions about your Contentstack data. What would you like to know?"},
-    {pattern: /^(your name)/i, response: "I'm your Contentstack Assistant! 🤖 How can I help you today?"},
-    {pattern: /^(bye|goodbye|see you|exit|quit)/i, response: "Goodbye! 👋 Feel free to come back if you have more questions about Contentstack!"},
-    {pattern: /^(help|support)/i, response: "I can help you find content, assets, and answer questions about your Contentstack data. What would you like to know?"},
-    {pattern: /^(what is this|what is contentstack)/i, response: "Contentstack is a headless CMS that helps you manage and deliver content across multiple channels. How can I assist you with it?"}
-  ];
-
-  for (const {pattern, response} of instantResponses) {
-    if (pattern.test(cleaned)) {
-      return response;
-    }
-  }
-  
-  return null; // No instant match found
-}
-
-
-
-  // Then update your sendMessage method:
-async sendMessage(userMessage: string): Promise<string> {
-  try {
-    // Add user message to history
-    this.conversationHistory.push({ role: 'user', content: userMessage });
-    
-    console.log(`👤 User: ${userMessage}`);
-
-    // 1. ULTRA-FAST PATH: Instant predefined responses
-    const instantResponse = this.getInstantGeneralResponse(userMessage);
-    if (instantResponse) {
-      console.log('⚡ Ultra-fast general response');
-      this.conversationHistory.push({ role: 'assistant', content: instantResponse });
-      return instantResponse; // INSTANT return - no API calls!
-    }
-
-    // 2. FAST PATH: General chat using LLM (existing logic)
-    if (this.isGeneralMessage(userMessage)) {
-      console.log('💬 General chat - using fast path');
-      const generalContext = this.buildGeneralContext();
-      const response = await this.model.invoke(generalContext);
-      const assistantResponse = this.cleanResponse(response);
+  async sendMessage(userMessage: string): Promise<string> {
+    try {
+      // Add user message to history
+      this.conversationHistory.push({ role: 'user', content: userMessage });
       
-      this.conversationHistory.push({ role: 'assistant', content: assistantResponse });
-      return assistantResponse;
-    }
+      console.log(`👤 User: ${userMessage}`);
 
-      // 2. SECOND: Try fast search index
+      // 1. ULTRA-FAST PATH: Instant predefined responses
+      const instantResponse = this.getInstantGeneralResponse(userMessage);
+      if (instantResponse) {
+        console.log('⚡ Ultra-fast general response');
+        this.conversationHistory.push({ role: 'assistant', content: instantResponse });
+        return instantResponse; // INSTANT return - no API calls!
+      }
+
+      // 2. FAST PATH: General chat using LLM (existing logic)
+      if (this.isGeneralMessage(userMessage)) {
+        console.log('💬 General chat - using fast path');
+        const generalContext = this.buildGeneralContext();
+        const response = await this.model.invoke(generalContext);
+        const assistantResponse = this.cleanResponse(response);
+        
+        this.conversationHistory.push({ role: 'assistant', content: assistantResponse });
+        return assistantResponse;
+      }
+
+      // 3. SECOND: Try fast search index
       console.log('🔍 Checking fast search index...');
       const fastMatch = this.searchService.findBestMatch(userMessage);
       if (fastMatch) {
@@ -188,7 +223,7 @@ async sendMessage(userMessage: string): Promise<string> {
         return fastMatch.answer; // Instant response!
       }
 
-      // 3. THIRD: Fallback to MCP search
+      // 4. THIRD: Fallback to MCP search
       console.log('🔍 No fast match, using MCP search...');
       let relevantContent: string;
       let queryType: string | undefined;
@@ -228,7 +263,8 @@ async sendMessage(userMessage: string): Promise<string> {
       } else if (cleaned.includes('entr')) {
         console.log('🔍 Searching for entries...');
         const contentTypeMatch = userMessage.match(/(page|blog|article|product)/i);
-        const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : 'page';
+        // CRITICAL FIX: Changed default from 'page' to 'product'
+        const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : 'product';
         relevantContent = await this.mcpClient.callTool('get_all_entries', { 
           content_type_uid: contentType,
           environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
@@ -329,6 +365,10 @@ INSTRUCTIONS:
   }
 
   async shutdown(): Promise<void> {
+    // Clean up interval on shutdown
+    if (this.reindexInterval) {
+      clearInterval(this.reindexInterval);
+    }
     await this.mcpClient.disconnect();
     console.log('🔌 Chat Agent shutdown');
   }

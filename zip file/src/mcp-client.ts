@@ -110,7 +110,7 @@ private quickCache: Map<string, { data: string; timestamp: number }> = new Map()
     }
   }
 
-  async searchContent(query: string, contentType: string = 'page'): Promise<string> {
+  async searchContent(query: string, contentType: string = 'product'): Promise<string> {
     const cacheKey = `${contentType}:${query.toLowerCase()}`;
     
     // Check cache first

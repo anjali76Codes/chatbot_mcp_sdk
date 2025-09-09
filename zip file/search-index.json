@@ -1,144 +1,815 @@
 [
   {
-    "question": "What is Contentstack Anjali Gupta Kickstart?",
-    "entryId": "bltdc1d1b81eaf37512",
-    "contentType": "page",
-    "answer": "This is an entry for a Contentstack Kickstart",
+    "question": "What is Payal (Anklet)?",
+    "entryId": "blt8c32ed85a9e64a70",
+    "contentType": "product",
+    "answer": "A delicate silver anklet with tiny bells, a staple in Indian jewelry.",
     "keywords": [
-      "contentstack anjali gupta kickstart",
-      "page",
+      "payal (anklet)",
+      "product",
       "about"
     ]
   },
   {
-    "question": "Tell me about Contentstack Anjali Gupta Kickstart",
-    "entryId": "bltdc1d1b81eaf37512",
-    "contentType": "page",
-    "answer": "Contentstack Anjali Gupta Kickstart This is an entry for a Contentstack Kickstart Contentstack anjali gupta are the minimum amount of code needed to connect to contentstack using the SDK, and with visual building enabled. This is a modular block Contentstack Modular Blocks allow you to dynamically c...",
+    "question": "Tell me about Payal (Anklet)",
+    "entryId": "blt8c32ed85a9e64a70",
+    "contentType": "product",
+    "answer": "Payal (Anklet) A delicate silver anklet with tiny bells, a staple in Indian jewelry.",
     "keywords": [
-      "contentstack",
-      "anjali",
-      "gupta",
-      "kickstart",
-      "this",
-      "entry",
-      "contentstack",
-      "kickstart",
-      "contentstack",
-      "anjali",
-      "gupta",
-      "minimum",
-      "amount",
-      "code",
-      "needed",
-      "connect",
-      "contentstack",
-      "using",
-      "sdk,",
+      "payal",
+      "(anklet)",
+      "delicate",
+      "silver",
+      "anklet",
       "with",
-      "visual",
-      "building",
-      "enabled.",
-      "this",
-      "modular",
-      "block",
-      "contentstack",
-      "modular",
-      "blocks",
-      "allow",
-      "dynamically",
-      "create,",
-      "arrange,",
-      "reuse",
-      "content",
-      "components",
-      "within",
-      "single",
-      "field,",
-      "offering",
-      "flexibility",
-      "building",
-      "complex",
-      "page",
-      "layouts",
-      "without",
-      "changes",
-      "content",
-      "type",
-      "structure.",
-      "check",
-      "academy",
-      "contentstack",
-      "offers",
-      "courses",
-      "explainers",
-      "platform.",
-      "check",
-      "course",
-      "content",
-      "modeling",
-      "more",
-      "development",
-      "specific",
-      "videos.",
-      "join",
-      "community",
-      "community",
-      "connects",
+      "tiny",
+      "bells,",
+      "staple",
+      "indian",
+      "jewelry."
+    ]
+  },
+  {
+    "question": "Show me Payal_(Anklet).jpg",
+    "entryId": "blt8c32ed85a9e64a70",
+    "contentType": "product",
+    "answer": "This is Payal_(Anklet).jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "payal_(anklet).jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Navratna Ring?",
+    "entryId": "blt8b661af8a8122898",
+    "contentType": "product",
+    "answer": "A ring featuring nine sacred gems (Navratna) in a traditional Indian setting.",
+    "keywords": [
+      "navratna ring",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Navratna Ring",
+    "entryId": "blt8b661af8a8122898",
+    "contentType": "product",
+    "answer": "Navratna Ring A ring featuring nine sacred gems (Navratna) in a traditional Indian setting.",
+    "keywords": [
+      "navratna",
+      "ring",
+      "ring",
+      "featuring",
+      "nine",
+      "sacred",
+      "gems",
+      "(navratna)",
+      "traditional",
+      "indian",
+      "setting."
+    ]
+  },
+  {
+    "question": "Show me Navratna_Ring.jpg",
+    "entryId": "blt8b661af8a8122898",
+    "contentType": "product",
+    "answer": "This is Navratna_Ring.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "navratna_ring.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Jhumka Earrings (Antique Finish)?",
+    "entryId": "blt8c9d4bddf3063272",
+    "contentType": "product",
+    "answer": "Traditional Indian bell-shaped earrings with intricate antique detailing.",
+    "keywords": [
+      "jhumka earrings (antique finish)",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Jhumka Earrings (Antique Finish)",
+    "entryId": "blt8c9d4bddf3063272",
+    "contentType": "product",
+    "answer": "Jhumka Earrings (Antique Finish) Traditional Indian bell-shaped earrings with intricate antique detailing.",
+    "keywords": [
+      "jhumka",
+      "earrings",
+      "(antique",
+      "finish)",
+      "traditional",
+      "indian",
+      "bell-shaped",
+      "earrings",
       "with",
-      "vibrant",
-      "network",
-      "like-minded",
-      "developers",
-      "show",
+      "intricate",
+      "antique",
+      "detailing."
+    ]
+  },
+  {
+    "question": "Show me Jhumka_Earrings.jpg",
+    "entryId": "blt8c9d4bddf3063272",
+    "contentType": "product",
+    "answer": "This is Jhumka_Earrings.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "jhumka_earrings.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Kundan Choker Set?",
+    "entryId": "blte3e4d1b32351c917",
+    "contentType": "product",
+    "answer": "A classic Indian choker set with Kundan work, perfect for weddings and festivals",
+    "keywords": [
+      "kundan choker set",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Kundan Choker Set",
+    "entryId": "blte3e4d1b32351c917",
+    "contentType": "product",
+    "answer": "Kundan Choker Set A classic Indian choker set with Kundan work, perfect for weddings and festivals",
+    "keywords": [
+      "kundan",
+      "choker",
+      "classic",
+      "indian",
+      "choker",
+      "with",
+      "kundan",
+      "work,",
+      "perfect",
+      "weddings",
+      "festivals"
+    ]
+  },
+  {
+    "question": "Show me Kundan_Choker_Set.jpg",
+    "entryId": "blte3e4d1b32351c917",
+    "contentType": "product",
+    "answer": "This is Kundan_Choker_Set.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "kundan_choker_set.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Maang Tikka (Indian Headpiece)?",
+    "entryId": "blted09928d615a7113",
+    "contentType": "product",
+    "answer": "A traditional Indian forehead jewelry piece, often worn with sarees and lehengas",
+    "keywords": [
+      "maang tikka (indian headpiece)",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Maang Tikka (Indian Headpiece)",
+    "entryId": "blted09928d615a7113",
+    "contentType": "product",
+    "answer": "Maang Tikka (Indian Headpiece) A traditional Indian forehead jewelry piece, often worn with sarees and lehengas",
+    "keywords": [
+      "maang",
+      "tikka",
+      "(indian",
+      "headpiece)",
+      "traditional",
+      "indian",
+      "forehead",
+      "jewelry",
+      "piece,",
+      "often",
+      "worn",
+      "with",
+      "sarees",
+      "lehengas"
+    ]
+  },
+  {
+    "question": "Show me Maang_Tikka_(Indian_Headpiece).jpg",
+    "entryId": "blted09928d615a7113",
+    "contentType": "product",
+    "answer": "This is Maang_Tikka_(Indian_Headpiece).jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "maang_tikka_(indian_headpiece).jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Cuff Links?",
+    "entryId": "bltc40065e45cf911c0",
+    "contentType": "product",
+    "answer": "Elegant silver cuff links for formal attire.",
+    "keywords": [
+      "cuff links",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Cuff Links",
+    "entryId": "bltc40065e45cf911c0",
+    "contentType": "product",
+    "answer": "Cuff Links Elegant silver cuff links for formal attire.",
+    "keywords": [
+      "cuff",
+      "links",
+      "elegant",
+      "silver",
+      "cuff",
+      "links",
+      "formal",
+      "attire."
+    ]
+  },
+  {
+    "question": "Show me Cuff_Links.jpg",
+    "entryId": "bltc40065e45cf911c0",
+    "contentType": "product",
+    "answer": "This is Cuff_Links.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "cuff_links.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Choker Necklace with Pendant?",
+    "entryId": "blt117dbad861ade485",
+    "contentType": "product",
+    "answer": "A modern choker with a minimalist pendant.",
+    "keywords": [
+      "choker necklace with pendant",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Choker Necklace with Pendant",
+    "entryId": "blt117dbad861ade485",
+    "contentType": "product",
+    "answer": "Choker Necklace with Pendant A modern choker with a minimalist pendant.",
+    "keywords": [
+      "choker",
+      "necklace",
+      "with",
+      "pendant",
+      "modern",
+      "choker",
+      "with",
+      "minimalist",
+      "pendant."
+    ]
+  },
+  {
+    "question": "Show me choker.jpg",
+    "entryId": "blt117dbad861ade485",
+    "contentType": "product",
+    "answer": "This is choker.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "choker.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Smart Fitness Ring?",
+    "entryId": "bltec9acb5a9e0ef76f",
+    "contentType": "product",
+    "answer": "A titanium ring that tracks activity and sleep.",
+    "keywords": [
+      "smart fitness ring",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Smart Fitness Ring",
+    "entryId": "bltec9acb5a9e0ef76f",
+    "contentType": "product",
+    "answer": "Smart Fitness Ring A titanium ring that tracks activity and sleep.",
+    "keywords": [
+      "smart",
+      "fitness",
+      "ring",
+      "titanium",
+      "ring",
+      "that",
+      "tracks",
+      "activity",
+      "sleep."
+    ]
+  },
+  {
+    "question": "Show me Smart_Fitness_Ring.jpg",
+    "entryId": "bltec9acb5a9e0ef76f",
+    "contentType": "product",
+    "answer": "This is Smart_Fitness_Ring.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "smart_fitness_ring.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Bangle Set?",
+    "entryId": "bltf5f850e7fe0ee887",
+    "contentType": "product",
+    "answer": "A set of three thin, stackable gold bangles.",
+    "keywords": [
+      "bangle set",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Bangle Set",
+    "entryId": "bltf5f850e7fe0ee887",
+    "contentType": "product",
+    "answer": "Bangle Set A set of three thin, stackable gold bangles.",
+    "keywords": [
+      "bangle",
+      "three",
+      "thin,",
+      "stackable",
+      "gold",
+      "bangles."
+    ]
+  },
+  {
+    "question": "Show me bangle_set.jpg",
+    "entryId": "bltf5f850e7fe0ee887",
+    "contentType": "product",
+    "answer": "This is bangle_set.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "bangle_set.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Diamond Halo Earrings?",
+    "entryId": "blt1dbc29e3b0b5bda2",
+    "contentType": "product",
+    "answer": "Elegant earrings with a central diamond surrounded by a halo.",
+    "keywords": [
+      "diamond halo earrings",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Diamond Halo Earrings",
+    "entryId": "blt1dbc29e3b0b5bda2",
+    "contentType": "product",
+    "answer": "Diamond Halo Earrings Elegant earrings with a central diamond surrounded by a halo.",
+    "keywords": [
+      "diamond",
+      "halo",
+      "earrings",
+      "elegant",
+      "earrings",
+      "with",
+      "central",
+      "diamond",
+      "surrounded",
+      "halo."
+    ]
+  },
+  {
+    "question": "Show me Diamond_Halo_Earrings.jpg",
+    "entryId": "blt1dbc29e3b0b5bda2",
+    "contentType": "product",
+    "answer": "This is Diamond_Halo_Earrings.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "diamond_halo_earrings.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Classic Silver Chain?",
+    "entryId": "blt03849adf9986a26f",
+    "contentType": "product",
+    "answer": "A simple and versatile silver chain necklace.",
+    "keywords": [
+      "classic silver chain",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Classic Silver Chain",
+    "entryId": "blt03849adf9986a26f",
+    "contentType": "product",
+    "answer": "Classic Silver Chain A simple and versatile silver chain necklace.",
+    "keywords": [
+      "classic",
+      "silver",
+      "chain",
+      "simple",
+      "versatile",
+      "silver",
+      "chain",
+      "necklace."
+    ]
+  },
+  {
+    "question": "Show me Classic_Silver_Chain.jpg",
+    "entryId": "blt03849adf9986a26f",
+    "contentType": "product",
+    "answer": "This is Classic_Silver_Chain.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "classic_silver_chain.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Birthstone Ring (August - Peridot)?",
+    "entryId": "blt7b4e9c4373eb2878",
+    "contentType": "product",
+    "answer": "A delicate ring featuring a Peridot birthstone.",
+    "keywords": [
+      "birthstone ring (august - peridot)",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Birthstone Ring (August - Peridot)",
+    "entryId": "blt7b4e9c4373eb2878",
+    "contentType": "product",
+    "answer": "Birthstone Ring (August - Peridot) A delicate ring featuring a Peridot birthstone.",
+    "keywords": [
+      "birthstone",
+      "ring",
+      "(august",
+      "peridot)",
+      "delicate",
+      "ring",
+      "featuring",
+      "peridot",
+      "birthstone."
+    ]
+  },
+  {
+    "question": "Show me Birthstone_Ring_(August_-_Peridot).jpg",
+    "entryId": "blt7b4e9c4373eb2878",
+    "contentType": "product",
+    "answer": "This is Birthstone_Ring_(August_-_Peridot).jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "birthstone_ring_(august_-_peridot).jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Hoop Earrings with Crystals?",
+    "entryId": "bltb54f8caabfa04680",
+    "contentType": "product",
+    "answer": "Sparkling hoop earrings with crystal details.",
+    "keywords": [
+      "hoop earrings with crystals",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Hoop Earrings with Crystals",
+    "entryId": "bltb54f8caabfa04680",
+    "contentType": "product",
+    "answer": "Hoop Earrings with Crystals Sparkling hoop earrings with crystal details.",
+    "keywords": [
+      "hoop",
+      "earrings",
+      "with",
+      "crystals",
+      "sparkling",
+      "hoop",
+      "earrings",
+      "with",
+      "crystal",
+      "details."
+    ]
+  },
+  {
+    "question": "Show me Hoop_Earrings_with_Crystals.jpg",
+    "entryId": "bltb54f8caabfa04680",
+    "contentType": "product",
+    "answer": "This is Hoop_Earrings_with_Crystals.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "hoop_earrings_with_crystals.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Charm Bracelet?",
+    "entryId": "blt7a3305c940261aeb",
+    "contentType": "product",
+    "answer": "A customizable silver bracelet with optional charms",
+    "keywords": [
+      "charm bracelet",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Charm Bracelet",
+    "entryId": "blt7a3305c940261aeb",
+    "contentType": "product",
+    "answer": "Charm Bracelet A customizable silver bracelet with optional charms",
+    "keywords": [
+      "charm",
+      "bracelet",
+      "customizable",
+      "silver",
+      "bracelet",
+      "with",
+      "optional",
+      "charms"
+    ]
+  },
+  {
+    "question": "Show me Charm_Bracelet.jpg",
+    "entryId": "blt7a3305c940261aeb",
+    "contentType": "product",
+    "answer": "This is Charm_Bracelet.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "charm_bracelet.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Vintage Rose Gold Locket?",
+    "entryId": "blteeec6d1c8e5f8c68",
+    "contentType": "product",
+    "answer": "A beautiful locket to keep your memories close, in rose gold",
+    "keywords": [
+      "vintage rose gold locket",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Vintage Rose Gold Locket",
+    "entryId": "blteeec6d1c8e5f8c68",
+    "contentType": "product",
+    "answer": "Vintage Rose Gold Locket A beautiful locket to keep your memories close, in rose gold",
+    "keywords": [
+      "vintage",
+      "rose",
+      "gold",
+      "locket",
+      "beautiful",
+      "locket",
+      "keep",
       "your",
-      "work",
-      "quections."
+      "memories",
+      "close,",
+      "rose",
+      "gold"
     ]
   },
   {
-    "question": "Show me drone.jpg",
-    "entryId": "bltdc1d1b81eaf37512",
-    "contentType": "page",
-    "answer": "This is drone.jpg, a image/jpeg image added on 3/9/2025",
+    "question": "Show me Vintage_Rose_Gold_Locket.jpg",
+    "entryId": "blteeec6d1c8e5f8c68",
+    "contentType": "product",
+    "answer": "This is Vintage_Rose_Gold_Locket.jpg, a image/jpeg image added on 9/9/2025",
     "keywords": [
-      "drone.jpg",
+      "vintage_rose_gold_locket.jpg",
       "image",
       "asset",
       "picture"
     ]
   },
   {
-    "question": "Show me csLogo_640x360.jpg",
-    "entryId": "bltdc1d1b81eaf37512",
-    "contentType": "page",
-    "answer": "This is csLogo_640x360.jpg, a image/jpeg image added on 31/8/2025",
+    "question": "What is Men's Leather Watch?",
+    "entryId": "blt8e0151450d0551eb",
+    "contentType": "product",
+    "answer": "A sophisticated watch with a leather strap and steel case.",
     "keywords": [
-      "cslogo_640x360.jpg",
+      "men's leather watch",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Men's Leather Watch",
+    "entryId": "blt8e0151450d0551eb",
+    "contentType": "product",
+    "answer": "Men's Leather Watch A sophisticated watch with a leather strap and steel case.",
+    "keywords": [
+      "men's",
+      "leather",
+      "watch",
+      "sophisticated",
+      "watch",
+      "with",
+      "leather",
+      "strap",
+      "steel",
+      "case."
+    ]
+  },
+  {
+    "question": "Show me Men_s_Leather_Watch.jpg",
+    "entryId": "blt8e0151450d0551eb",
+    "contentType": "product",
+    "answer": "This is Men_s_Leather_Watch.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "men_s_leather_watch.jpg",
       "image",
       "asset",
       "picture"
     ]
   },
   {
-    "question": "Show me Opengraph_B.png",
-    "entryId": "bltdc1d1b81eaf37512",
-    "contentType": "page",
-    "answer": "This is Opengraph_B.png, a image/png image added on 31/8/2025",
+    "question": "What is Sapphire and Diamond Ring?",
+    "entryId": "blt5163c5869a0602f7",
+    "contentType": "product",
+    "answer": "A luxurious ring with a central sapphire surrounded by diamonds.",
     "keywords": [
-      "opengraph_b.png",
+      "sapphire and diamond ring",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Sapphire and Diamond Ring",
+    "entryId": "blt5163c5869a0602f7",
+    "contentType": "product",
+    "answer": "Sapphire and Diamond Ring A luxurious ring with a central sapphire surrounded by diamonds.",
+    "keywords": [
+      "sapphire",
+      "diamond",
+      "ring",
+      "luxurious",
+      "ring",
+      "with",
+      "central",
+      "sapphire",
+      "surrounded",
+      "diamonds."
+    ]
+  },
+  {
+    "question": "Show me Sapphire_and_Diamond_Ring.jpg",
+    "entryId": "blt5163c5869a0602f7",
+    "contentType": "product",
+    "answer": "This is Sapphire_and_Diamond_Ring.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "sapphire_and_diamond_ring.jpg",
       "image",
       "asset",
       "picture"
     ]
   },
   {
-    "question": "Show me discord-logo.webp",
-    "entryId": "bltdc1d1b81eaf37512",
-    "contentType": "page",
-    "answer": "This is discord-logo.webp, a image/webp image added on 31/8/2025",
+    "question": "What is Emerald Cut Tennis Bracelet?",
+    "entryId": "blteda68016ed3d3dab",
+    "contentType": "product",
+    "answer": "A stunning bracelet with emerald-cut stones in a continuous line.",
     "keywords": [
-      "discord-logo.webp",
+      "emerald cut tennis bracelet",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Emerald Cut Tennis Bracelet",
+    "entryId": "blteda68016ed3d3dab",
+    "contentType": "product",
+    "answer": "Emerald Cut Tennis Bracelet A stunning bracelet with emerald-cut stones in a continuous line.",
+    "keywords": [
+      "emerald",
+      "tennis",
+      "bracelet",
+      "stunning",
+      "bracelet",
+      "with",
+      "emerald-cut",
+      "stones",
+      "continuous",
+      "line."
+    ]
+  },
+  {
+    "question": "Show me Emerald_Cut_Tennis_Bracelet.jpg",
+    "entryId": "blteda68016ed3d3dab",
+    "contentType": "product",
+    "answer": "This is Emerald_Cut_Tennis_Bracelet.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "emerald_cut_tennis_bracelet.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Pearl Stud Earrings?",
+    "entryId": "blta39624c15be94103",
+    "contentType": "product",
+    "answer": "Timeless and elegant pearl earrings for everyday wear.",
+    "keywords": [
+      "pearl stud earrings",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Pearl Stud Earrings",
+    "entryId": "blta39624c15be94103",
+    "contentType": "product",
+    "answer": "Pearl Stud Earrings Timeless and elegant pearl earrings for everyday wear.",
+    "keywords": [
+      "pearl",
+      "stud",
+      "earrings",
+      "timeless",
+      "elegant",
+      "pearl",
+      "earrings",
+      "everyday",
+      "wear."
+    ]
+  },
+  {
+    "question": "Show me Pearl_Stud_Earrings.jpg",
+    "entryId": "blta39624c15be94103",
+    "contentType": "product",
+    "answer": "This is Pearl_Stud_Earrings.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "pearl_stud_earrings.jpg",
+      "image",
+      "asset",
+      "picture"
+    ]
+  },
+  {
+    "question": "What is Diamond Solitaire Necklace?",
+    "entryId": "blta0bf00112cbd2b03",
+    "contentType": "product",
+    "answer": "A classic necklace featuring a brilliant solitaire diamond.",
+    "keywords": [
+      "diamond solitaire necklace",
+      "product",
+      "about"
+    ]
+  },
+  {
+    "question": "Tell me about Diamond Solitaire Necklace",
+    "entryId": "blta0bf00112cbd2b03",
+    "contentType": "product",
+    "answer": "Diamond Solitaire Necklace A classic necklace featuring a brilliant solitaire diamond.",
+    "keywords": [
+      "diamond",
+      "solitaire",
+      "necklace",
+      "classic",
+      "necklace",
+      "featuring",
+      "brilliant",
+      "solitaire",
+      "diamond."
+    ]
+  },
+  {
+    "question": "Show me Diamond_Solitaire_Necklace.jpg",
+    "entryId": "blta0bf00112cbd2b03",
+    "contentType": "product",
+    "answer": "This is Diamond_Solitaire_Necklace.jpg, a image/jpeg image added on 9/9/2025",
+    "keywords": [
+      "diamond_solitaire_necklace.jpg",
       "image",
       "asset",
       "picture"
