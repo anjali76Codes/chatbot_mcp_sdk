@@ -22,18 +22,19 @@
   "author": "Your Name",
   "license": "ISC",
   "dependencies": {
+    "@langchain/core": "^0.3.75",
     "@langchain/google-genai": "^0.2.17",
     "@modelcontextprotocol/sdk": "^1.17.5",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^4.21.2",
-    "cors": "^2.8.5",
-    "@langchain/core": "^0.3.75"
+    "natural": "^8.1.0"
   },
   "devDependencies": {
-    "@types/node": "^20.16.15",
-    "@types/express": "^5.0.0",
     "@types/cors": "^2.8.17",
-    "typescript": "^5.7.3",
-    "tsx": "^4.19.3"
+    "@types/express": "^5.0.0",
+    "@types/node": "^20.16.15",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
   }
 }

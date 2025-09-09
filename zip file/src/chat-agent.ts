@@ -1,6 +1,7 @@
 // src/chat-agent.ts
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ContentstackMCPClient } from './mcp-client.js';
+import { SearchService } from './search-service.js';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -13,17 +14,19 @@ export interface ChatMessage {
 export class ContentstackChatAgent {
   private model: ChatGoogleGenerativeAI;
   private mcpClient: ContentstackMCPClient;
+  private searchService: SearchService;
   private conversationHistory: ChatMessage[] = [];
   private generalPatterns: RegExp[];
 
   constructor() {
     this.model = new ChatGoogleGenerativeAI({
       apiKey: process.env.GOOGLE_API_KEY!,
-      model: 'gemini-2.5-pro',
-      temperature: 0.7,
+      model: 'gemini-1.5-flash', // Faster model
+      temperature: 0.3, // More deterministic
     });
 
     this.mcpClient = new ContentstackMCPClient();
+    this.searchService = new SearchService();
     
     // Pre-compiled regex patterns for fast general message detection
     this.generalPatterns = [
@@ -41,11 +44,10 @@ export class ContentstackChatAgent {
   async initialize(): Promise<void> {
     console.log('🤖 Initializing Chat Agent...');
     await this.mcpClient.connect();
+    await this.searchService.initialize(); // Initialize search service
     console.log('✅ Chat Agent ready!');
   }
 
-
-   // Add this method for faster content type detection
   private fastContentTypeDetection(userQuery: string): string {
     const query = userQuery.toLowerCase();
     
@@ -91,60 +93,122 @@ INSTRUCTIONS:
 YOUR RESPONSE:`.trim();
   }
 
-  private cleanResponse(response: string): string {
-    // Remove markdown formatting (**bold**, _italic_, etc.)
-    return response
-      .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove **bold**
-      .replace(/\*(.*?)\*/g, '$1')      // Remove *italic*
-      .replace(/_(.*?)_/g, '$1')        // Remove _underline_
-      .replace(/`(.*?)`/g, '$1')        // Remove `code`
-      .replace(/\n{3,}/g, '\n\n')       // Limit consecutive newlines
+  private cleanResponse(response: any): string {
+    // Extract content from different response types
+    let content: string;
+    if (typeof response === 'string') {
+      content = response;
+    } else if (response && typeof response.content === 'string') {
+      content = response.content;
+    } else if (Array.isArray(response)) {
+      content = response
+        .map(item => {
+          if (typeof item === 'string') return item;
+          if (item && typeof item.text === 'string') return item.text;
+          return '';
+        })
+        .filter(text => text.length > 0)
+        .join(' ');
+    } else {
+      content = String(response);
+    }
+
+    // Remove markdown formatting
+    return content
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/_(.*?)_/g, '$1')
+      .replace(/`(.*?)`/g, '$1')
+      .replace(/\n{3,}/g, '\n\n')
       .trim();
   }
 
-  async sendMessage(userMessage: string): Promise<string> {
-    try {
-      // Add user message to history
-      this.conversationHistory.push({ role: 'user', content: userMessage });
-      
-      console.log(`👤 User: ${userMessage}`);
+// Add this method to your class
+private getInstantGeneralResponse(message: string): string | null {
+  const cleaned = message.toLowerCase().trim();
+  
+  const instantResponses: {pattern: RegExp, response: string}[] = [
+    {pattern: /^(hi|hello|hey|greetings)/i, response: "Hello! 👋 How can I help you with Contentstack today?"},
+    {pattern: /^(good morning)/i, response: "Good morning! ☀️ How can I assist you with Contentstack?"},
+    {pattern: /^(good afternoon)/i, response: "Good afternoon! 🌤️ What can I help you with regarding Contentstack?"},
+    {pattern: /^(good evening)/i, response: "Good evening! 🌙 How can I assist you with Contentstack?"},
+    {pattern: /^(how are you|how's it going|what's up)/i, response: "I'm doing great, thanks for asking! 😊 How can I help you with Contentstack today?"},
+    {pattern: /^(thanks|thank you|appreciate it|cheers)/i, response: "You're welcome! 😊 Is there anything else I can help you with?"},
+    {pattern: /^(who are you|what can you do|what are you)/i, response: "I'm a Contentstack assistant! I can help you find content, assets, and answer questions about your Contentstack data. What would you like to know?"},
+    {pattern: /^(your name)/i, response: "I'm your Contentstack Assistant! 🤖 How can I help you today?"},
+    {pattern: /^(bye|goodbye|see you|exit|quit)/i, response: "Goodbye! 👋 Feel free to come back if you have more questions about Contentstack!"},
+    {pattern: /^(help|support)/i, response: "I can help you find content, assets, and answer questions about your Contentstack data. What would you like to know?"},
+    {pattern: /^(what is this|what is contentstack)/i, response: "Contentstack is a headless CMS that helps you manage and deliver content across multiple channels. How can I assist you with it?"}
+  ];
 
-      // 1. FIRST CHECK: Is this general chat? (FAST PATH)
-      if (this.isGeneralMessage(userMessage)) {
-        console.log('💬 General chat - using fast path');
-        const generalContext = this.buildGeneralContext();
-        const response = await this.model.invoke(generalContext);
-        const assistantResponse = this.cleanResponse(
-          typeof response === 'string' ? response : response.content.toString()
-        );
-        
-        this.conversationHistory.push({ role: 'assistant', content: assistantResponse });
-        return assistantResponse;
+  for (const {pattern, response} of instantResponses) {
+    if (pattern.test(cleaned)) {
+      return response;
+    }
+  }
+  
+  return null; // No instant match found
+}
+
+
+
+  // Then update your sendMessage method:
+async sendMessage(userMessage: string): Promise<string> {
+  try {
+    // Add user message to history
+    this.conversationHistory.push({ role: 'user', content: userMessage });
+    
+    console.log(`👤 User: ${userMessage}`);
+
+    // 1. ULTRA-FAST PATH: Instant predefined responses
+    const instantResponse = this.getInstantGeneralResponse(userMessage);
+    if (instantResponse) {
+      console.log('⚡ Ultra-fast general response');
+      this.conversationHistory.push({ role: 'assistant', content: instantResponse });
+      return instantResponse; // INSTANT return - no API calls!
+    }
+
+    // 2. FAST PATH: General chat using LLM (existing logic)
+    if (this.isGeneralMessage(userMessage)) {
+      console.log('💬 General chat - using fast path');
+      const generalContext = this.buildGeneralContext();
+      const response = await this.model.invoke(generalContext);
+      const assistantResponse = this.cleanResponse(response);
+      
+      this.conversationHistory.push({ role: 'assistant', content: assistantResponse });
+      return assistantResponse;
+    }
+
+      // 2. SECOND: Try fast search index
+      console.log('🔍 Checking fast search index...');
+      const fastMatch = this.searchService.findBestMatch(userMessage);
+      if (fastMatch) {
+        console.log(`⚡ Fast match found: ${fastMatch.entryId}`);
+        this.conversationHistory.push({ role: 'assistant', content: fastMatch.answer });
+        return fastMatch.answer; // Instant response!
       }
 
-      // 2. SLOW PATH: Content-related queries (existing MCP logic)
+      // 3. THIRD: Fallback to MCP search
+      console.log('🔍 No fast match, using MCP search...');
       let relevantContent: string;
       let queryType: string | undefined;
 
-      // 1. Detect what type of content to search for
       const cleaned = userMessage.toLowerCase().trim();
       
       if (cleaned.includes('asset') || cleaned.includes('image') || cleaned.includes('file')) {
         console.log('🔍 Searching for assets...');
         
         try {
-          // First get available environments
           const environments = await this.mcpClient.callTool('get_all_environments', {});
           const envData = JSON.parse(environments);
           
-          // Use the first available environment or a specific one
           const availableEnv = envData.environments && envData.environments.length > 0 
             ? envData.environments[0].name 
             : 'production';
           
           const assetParams = {
             environment: availableEnv,
-            limit: 20,
+            limit: 10, // Reduced limit for speed
             skip: 0
           };
           
@@ -152,9 +216,8 @@ YOUR RESPONSE:`.trim();
           queryType = 'assets';
           
         } catch (error) {
-          // Fallback to environment from .env or default
           const environment = process.env.CONTENTSTACK_ENVIRONMENT || 'production';
-          const assetParams = { environment: environment, limit: 20, skip: 0 };
+          const assetParams = { environment: environment, limit: 10, skip: 0 };
           relevantContent = await this.mcpClient.callTool('get_all_assets', assetParams);
           queryType = 'assets';
         }
@@ -164,36 +227,34 @@ YOUR RESPONSE:`.trim();
         queryType = 'content_types';
       } else if (cleaned.includes('entr')) {
         console.log('🔍 Searching for entries...');
-        // Try to extract content type from query, default to 'page'
         const contentTypeMatch = userMessage.match(/(page|blog|article|product)/i);
         const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : 'page';
         relevantContent = await this.mcpClient.callTool('get_all_entries', { 
-          content_type_uid: contentType 
+          content_type_uid: contentType,
+          environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
+          limit: 10 // Reduced limit for speed
         });
         queryType = 'entries';
       } else {
-        // Smart content type detection for regular questions
         console.log('🔍 Determining content type...');
-        const detectedContentType = await this.determineContentType(userMessage);
+        const detectedContentType = this.fastContentTypeDetection(userMessage);
         console.log(`🔍 Smart searching in "${detectedContentType}" content type...`);
         relevantContent = await this.mcpClient.searchContent(userMessage, detectedContentType);
       }
       
-      // 3. Build conversation context
+      // 4. Build conversation context
       const context = this.buildConversationContext(relevantContent, queryType);
       
-      // 4. Generate response using Gemini
+      // 5. Generate response using Gemini
       console.log('🤖 Generating response...');
       const response = await this.model.invoke(context);
       
-      // 5. Clean and add assistant response to history
-      const assistantResponse = this.cleanResponse(
-        typeof response === 'string' ? response : response.content.toString()
-      );
+      // 6. Clean and add assistant response to history
+      const assistantResponse = this.cleanResponse(response);
       
       this.conversationHistory.push({ role: 'assistant', content: assistantResponse });
       
-      // 6. Keep conversation history manageable (last 10 messages)
+      // 7. Keep conversation history manageable
       if (this.conversationHistory.length > 10) {
         this.conversationHistory = this.conversationHistory.slice(-10);
       }
@@ -208,28 +269,9 @@ YOUR RESPONSE:`.trim();
     }
   }
 
-  private async determineContentType(userQuery: string): Promise<string> {
-    const prompt = `
-Analyze this user query and determine which Contentstack content type is most relevant.
-Available content types: [page, blog_post, product, article, faq, author]
-
-User query: "${userQuery}"
-
-Respond with ONLY the content type name (e.g., "page", "blog_post"). If unsure, respond with "page".
-    `;
-
-    try {
-      const response = await this.model.invoke(prompt);
-      const contentType = typeof response === 'string' ? response : response.content.toString();
-      return contentType.trim().toLowerCase();
-    } catch (error) {
-      return 'page'; // Default fallback
-    }
-  }
-
   private buildConversationContext(contentstackData: string, queryType?: string): string {
     const historyContext = this.conversationHistory
-      .slice(0, -1) // Exclude current user message
+      .slice(0, -1)
       .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
       .join('\n');
 
@@ -254,7 +296,6 @@ INSTRUCTIONS:
 7. Always respond with plain, clean text only
 `;
 
-    // Add specific instructions for different query types
     if (queryType === 'assets') {
       instructions += `
 8. You're showing assets - summarize what's available in a user-friendly way
