@@ -5,24 +5,34 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
+export interface MCPClientConfig {
+  apiKey?: string;
+  managementToken?: string;
+  environment?: string;
+  region?: string;
+}
+
 export class ContentstackMCPClient {
   private client: Client;
   private transport: StdioClientTransport;
   private availableTools: string[] = [];
   private searchCache: Map<string, { data: string; timestamp: number }> = new Map();
- // In mcp-client.ts
-private readonly CACHE_TTL = 2 * 60 * 1000; // Reduce to 2 minutes
-private readonly QUICK_CACHE_TTL = 30 * 1000; // 30 seconds for general queries
+  private readonly CACHE_TTL = 2 * 60 * 1000;
+  private readonly QUICK_CACHE_TTL = 30 * 1000;
+  private quickCache: Map<string, { data: string; timestamp: number }> = new Map();
+  private config: MCPClientConfig;
 
-// Add short-lived cache for common queries
-private quickCache: Map<string, { data: string; timestamp: number }> = new Map();
-
-  constructor() {
-    const apiKey = process.env.CONTENTSTACK_API_KEY;
-    const managementToken = process.env.CONTENTSTACK_MANAGEMENT_TOKEN;
+  // UPDATED CONSTRUCTOR - Now accepts configuration
+  constructor(config: MCPClientConfig = {}) {
+    this.config = config;
+    
+    // Use config values or fallback to environment variables
+    const apiKey = config.apiKey || process.env.CONTENTSTACK_API_KEY;
+    const managementToken = config.managementToken || process.env.CONTENTSTACK_MANAGEMENT_TOKEN;
+    const environment = config.environment || process.env.CONTENTSTACK_ENVIRONMENT;
 
     if (!apiKey || !managementToken) {
-      throw new Error('Contentstack API Key or Management Token not found in environment variables');
+      throw new Error('Contentstack API Key or Management Token not found');
     }
 
     const serverCommand = 'npx';
@@ -34,7 +44,7 @@ private quickCache: Map<string, { data: string; timestamp: number }> = new Map()
     const env: Record<string, string> = {
       CONTENTSTACK_API_KEY: apiKey,
       CONTENTSTACK_MANAGEMENT_TOKEN: managementToken,
-      CONTENTSTACK_ENVIRONMENT: process.env.CONTENTSTACK_ENVIRONMENT || 'production'
+      CONTENTSTACK_ENVIRONMENT: environment || 'production'
     };
 
     console.log('🚀 Initializing MCP client...');

@@ -2,7 +2,6 @@
 import express from 'express';
 import { ContentstackChatAgent } from './chat-agent.js';
 import cors from 'cors';
-import { Stack } from '@contentstack/delivery-sdk';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -11,17 +10,35 @@ const port = process.env.PORT || 3001;
 app.use(cors()); // Enable Cross-Origin Requests
 app.use(express.json()); // Parse JSON bodies
 
-// Initialize a single chat agent instance for the server
-const chatAgent = new ContentstackChatAgent();
-await chatAgent.initialize(); // Make sure to await initialization
+// Initialize chat agent instance
+let chatAgent: ContentstackChatAgent;
 
-
-
-
-
-
-
-
+// Async initialization function
+const initializeServer = async () => {
+  try {
+    // Now chatAgent accepts configuration
+    chatAgent = new ContentstackChatAgent({
+      contentstack: {
+        apiKey: process.env.CONTENTSTACK_API_KEY,
+        deliveryToken: process.env.CONTENTSTACK_DELIVERY_TOKEN,
+        environment: process.env.CONTENTSTACK_ENVIRONMENT,
+        region: 'eu'
+      },
+      llm: {
+        provider: 'google',
+        apiKey: process.env.GOOGLE_API_KEY,
+        model: 'gemini-1.5-flash',
+        temperature: 0.3
+      }
+    });
+    
+    await chatAgent.initialize();
+    console.log('✅ Chat Agent initialized successfully with configuration');
+  } catch (error) {
+    console.error('❌ Failed to initialize Chat Agent:', error);
+    process.exit(1);
+  }
+};
 
 app.get('/api/products', async (req, res) => {
   try {
@@ -93,25 +110,30 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
+
+
 // Define the main chat endpoint
 app.post('/v1/chat', async (req, res) => {
   try {
-    const { message, conversationHistory = [] } = req.body;
+    const { message, config } = req.body; // Accept config from request
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // TODO: Here, you need to integrate your existing logic.
-    // Instead of using a fixed history from the request,
-    // you'll need to manage state per user/session.
-    // For now, this is a simple implementation.
-
     console.log(`📨 Received message: ${message}`);
 
-    // This is the key line: use your existing sendMessage method
-    const response = await chatAgent.sendMessage(message);
+    let agent = chatAgent; // Use default agent
 
+    // If config is provided, create a new agent instance with that config
+    if (config) {
+      console.log('🔄 Creating new chat agent with provided configuration');
+      agent = new ContentstackChatAgent(config);
+      await agent.initialize();
+    }
+
+    const response = await agent.sendMessage(message);
+    
     // Send the response back as JSON
     res.json({ response });
 
@@ -121,7 +143,22 @@ app.post('/v1/chat', async (req, res) => {
   }
 });
 
-// Start the server
-app.listen(port, () => {
-  console.log(`🚀 Model API server running on http://localhost:${port}`);
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    chatAgentInitialized: !!chatAgent,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Initialize and start the server
+initializeServer().then(() => {
+  app.listen(port, () => {
+    console.log(`🚀 Model API server running on http://localhost:${port}`);
+    console.log(`✅ Health check available at http://localhost:${port}/health`);
+  });
+}).catch(error => {
+  console.error('❌ Failed to start server:', error);
+  process.exit(1);
 });

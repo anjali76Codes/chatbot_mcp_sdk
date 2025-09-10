@@ -14,6 +14,25 @@ export interface ChatMessage {
   content: string;
 }
 
+// Add this interface at the top of the file (after the imports)
+export interface ChatAgentConfig {
+  // Contentstack Configuration
+  contentstack?: {
+    apiKey?: string;
+    deliveryToken?: string;
+    environment?: string;
+    region?: string;
+  };
+  
+  // LLM Configuration
+  llm?: {
+    provider: 'google' | 'openai' | 'anthropic';
+    apiKey?: string;
+    model?: string;
+    temperature?: number;
+  };
+}
+
 export class ContentstackChatAgent {
   private model: ChatGoogleGenerativeAI;
   private mcpClient: ContentstackMCPClient;
@@ -22,18 +41,36 @@ export class ContentstackChatAgent {
   private generalPatterns: RegExp[];
   private reindexInterval: NodeJS.Timeout | null = null;
   private lastIndexUpdate: Date | null = null;
+  private config: ChatAgentConfig;
 
-  constructor() {
+  
+
+  // UPDATED CONSTRUCTOR - Replace your existing constructor with this
+  constructor(config: ChatAgentConfig = {}) {
+    this.config = config;
+    
+    // Use config values or fallback to environment variables
+    const llmApiKey = config.llm?.apiKey || process.env.GOOGLE_API_KEY!;
+    const llmModel = config.llm?.model || 'gemini-1.5-flash';
+    const llmTemperature = config.llm?.temperature || 0.3;
+
     this.model = new ChatGoogleGenerativeAI({
-      apiKey: process.env.GOOGLE_API_KEY!,
-      model: 'gemini-2.5-pro', // Faster model
-      temperature: 0.3, // More deterministic
+      apiKey: llmApiKey,
+      model: llmModel,
+      temperature: llmTemperature,
     });
 
-    this.mcpClient = new ContentstackMCPClient();
+    // Initialize MCP client with config
+// Initialize MCP client with only the contentstack config
+this.mcpClient = new ContentstackMCPClient({
+  apiKey: config.contentstack?.apiKey,
+  managementToken: config.contentstack?.deliveryToken, // Note: MCP uses managementToken, not deliveryToken
+  environment: config.contentstack?.environment,
+  region: config.contentstack?.region
+});
     this.searchService = new SearchService();
     
-    // Pre-compiled regex patterns for fast general message detection
+    // Keep your existing patterns
     this.generalPatterns = [
       /^(hi|hello|hey|greetings|good morning|good afternoon|good evening)/i,
       /^(how are you|how's it going|what's up)/i,
@@ -45,7 +82,6 @@ export class ContentstackChatAgent {
       /^(what is this|what is contentstack)/i
     ];
   }
-
   async initialize(): Promise<void> {
     console.log('🤖 Initializing Chat Agent...');
     await this.mcpClient.connect();
