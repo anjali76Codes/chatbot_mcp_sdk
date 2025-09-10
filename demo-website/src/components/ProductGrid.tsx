@@ -12,19 +12,28 @@ export const ProductGrid = () => {
     loadProducts();
   }, []);
 
-  const loadProducts = async () => {
-    try {
-      setLoading(true);
-      const data = await productService.getAllProducts();
+const loadProducts = async () => {
+  try {
+    setLoading(true);
+    const data = await productService.getAllProducts();
+    
+    if (Array.isArray(data)) {
       setProducts(data);
-    } catch (err) {
-      setError('Failed to load products');
-      console.error(err);
-    } finally {
-      setLoading(false);
+    } else {
+      console.error('Expected array but got:', data);
+      setError('Invalid data format received from server');
+      setProducts([]);
     }
-  };
-
+  } catch (err) {
+    setError('Failed to load products');
+    console.error('Error loading products:', err);
+    
+    // Temporary: Set empty array to prevent UI crash
+    setProducts([]);
+  } finally {
+    setLoading(false);
+  }
+};
   if (loading) {
     return (
       <div className="flex justify-center items-center py-20">
