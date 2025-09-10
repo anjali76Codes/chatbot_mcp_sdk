@@ -120,47 +120,48 @@ export class ContentstackMCPClient {
     }
   }
 
-  async searchContent(query: string, contentType: string = 'product'): Promise<string> {
-    const cacheKey = `${contentType}:${query.toLowerCase()}`;
-    
-    // Check cache first
-    const cached = this.searchCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      console.log('♻️  Using cached search results');
-      return cached.data;
-    }
-
-    try {
-      console.log(`🔍 Smart searching for "${query}" in "${contentType}"`);
-      
-      // Extract meaningful keywords
-      const searchTerms = this.extractSearchKeywords(query);
-      
-      // Build search parameters
-      const searchParams = {
-        content_type_uid: contentType,
-        environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
-        query: searchTerms,
-        limit: 5,
-        locale: 'en-us'
-      };
-
-      // Execute the search
-      const result = await this.callTool('get_all_entries', searchParams);
-      
-      // Cache successful results
-      if (result && this.hasResults(result)) {
-        this.searchCache.set(cacheKey, { data: result, timestamp: Date.now() });
-        return result;
-      }
-      
-      return 'No relevant content found.';
-      
-    } catch (error) {
-      console.error('❌ Search error:', error);
-      return await this.getAllEntriesAndFilter(contentType, query);
-    }
+async searchContent(query: string, contentType: string = 'product'): Promise<string> {
+  const cacheKey = `${contentType}:${query.toLowerCase()}`;
+  
+  // Check cache first
+  const cached = this.searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+    console.log('♻️  Using cached search results');
+    return cached.data;
   }
+
+  try {
+    console.log(`🔍 Smart searching for "${query}" in "${contentType}"`);
+    
+    // Extract meaningful keywords
+    const searchTerms = this.extractSearchKeywords(query);
+    
+    // Build search parameters with higher limit
+    const searchParams = {
+      content_type_uid: contentType,
+      environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
+      query: searchTerms,
+      limit: 50, // Increased from 5 to 50
+      skip: 0,
+      locale: 'en-us'
+    };
+
+    // Execute the search
+    const result = await this.callTool('get_all_entries', searchParams);
+    
+    // Cache successful results
+    if (result && this.hasResults(result)) {
+      this.searchCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      return result;
+    }
+    
+    return 'No relevant content found.';
+    
+  } catch (error) {
+    console.error('❌ Search error:', error);
+    return await this.getAllEntriesAndFilter(contentType, query);
+  }
+}
 
   private extractSearchKeywords(query: string): string {
     // Remove stop words and extract meaningful keywords

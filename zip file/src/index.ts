@@ -1,7 +1,9 @@
 // src/index.ts
-import { ContentstackChatAgent } from './chat-agent.js';
+import { ContentstackChatAgent, ChatMessage } from './chat-agent.js';
 import * as readline from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
+
+const history: ChatMessage[] = [];
 
 async function main(): Promise<void> {
   const requiredEnvVars = [
@@ -62,7 +64,7 @@ async function main(): Promise<void> {
     `Here is the raw tool output: ${toolResult}. Please summarize the entries for the user.`
   );
 } else {
-  response = await chatAgent.sendMessage(userInput);
+  response = await chatAgent.sendMessage(userInput,history);
 }
 
       console.log(`\n🤖 Assistant: ${response}\n`);

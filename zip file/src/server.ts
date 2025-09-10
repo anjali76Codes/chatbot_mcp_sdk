@@ -13,6 +13,13 @@ app.use(express.json()); // Parse JSON bodies
 // Initialize chat agent instance
 let chatAgent: ContentstackChatAgent;
 
+// Define ChatMessage type
+type ChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+
 // Async initialization function
 const initializeServer = async () => {
   try {
@@ -50,11 +57,14 @@ app.get('/api/products', async (req, res) => {
       return res.status(500).json({ error: 'Contentstack configuration missing' });
     }
 
-    console.log('Fetching products from EU region...');
+    // Get pagination parameters from query string
+    const limit = parseInt(req.query.limit as string) || 100; // Default to 100
+    const skip = parseInt(req.query.skip as string) || 0;
 
-    // Try the CORRECT EU endpoint format
+    console.log(`Fetching ${limit} products starting from ${skip}...`);
+
     const response = await fetch(
-      `https://eu-api.contentstack.com/v3/content_types/product/entries?environment=${environment}`,
+      `https://eu-api.contentstack.com/v3/content_types/product/entries?environment=${environment}&limit=${limit}&skip=${skip}`,
       {
         headers: {
           'api_key': apiKey,
@@ -64,47 +74,26 @@ app.get('/api/products', async (req, res) => {
       }
     );
 
-    console.log('Contentstack API response status:', response.status);
-
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('Contentstack API error details:', errorData);
       throw new Error(`Contentstack API error: ${response.status} - ${errorData}`);
     }
 
     const data = await response.json();
-    console.log(`✅ Success! Fetched ${data.entries?.length || 0} products`);
     
-    res.json(data.entries || []);
+    // Return both entries and total count
+    res.json({
+      entries: data.entries || [],
+      total: data.entries?.length || 0,
+      skip: skip,
+      limit: limit,
+      hasMore: data.entries?.length === limit // Indicate if more entries exist
+    });
     
   } catch (error) {
     console.error('Error in /api/products:', error);
-    
-    // Try US endpoint as fallback
-    try {
-      console.log('Trying US endpoint as fallback...');
-      const usResponse = await fetch(
-        `https://cdn.contentstack.io/v3/content_types/product/entries?environment=${process.env.CONTENTSTACK_ENVIRONMENT}`,
-        {
-          headers: {
-            'api_key': process.env.CONTENTSTACK_API_KEY!,
-            'access_token': process.env.CONTENTSTACK_DELIVERY_TOKEN!,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      
-      if (usResponse.ok) {
-        const data = await usResponse.json();
-        console.log('✅ Success with US endpoint!');
-        return res.json(data.entries || []);
-      }
-    } catch (fallbackError) {
-      console.error('US endpoint also failed:', fallbackError);
-    }
-
     res.status(500).json({ 
-      error: 'Network error: Cannot connect to Contentstack. Check your internet connection.',
+      error: 'Failed to fetch products',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
@@ -112,18 +101,34 @@ app.get('/api/products', async (req, res) => {
 
 
 
-// Define the main chat endpoint
+// Add conversation storage (in-memory for now, use Redis in production)
+const conversationSessions = new Map<string, {
+  history: ChatMessage[];
+  createdAt: Date;
+  lastAccessed: Date;
+}>();
+
+// Define the main chat endpoint with conversation support
 app.post('/v1/chat', async (req, res) => {
   try {
-    const { message, config } = req.body; // Accept config from request
+    const { 
+      message, 
+      config, 
+      conversationId: providedConversationId, 
+      resetConversation = false 
+    } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    console.log(`📨 Received message: ${message}`);
+    console.log(`📨 Received message: ${message}`, { 
+      conversationId: providedConversationId, 
+      resetConversation 
+    });
 
     let agent = chatAgent; // Use default agent
+    let conversationHistory: ChatMessage[] = [];
 
     // If config is provided, create a new agent instance with that config
     if (config) {
@@ -132,10 +137,68 @@ app.post('/v1/chat', async (req, res) => {
       await agent.initialize();
     }
 
-    const response = await agent.sendMessage(message);
+    // Handle conversation state
+    let conversationId = providedConversationId;
     
-    // Send the response back as JSON
-    res.json({ response });
+    if (resetConversation && conversationId) {
+      // Clear existing conversation
+      conversationSessions.delete(conversationId);
+      conversationId = undefined;
+    }
+
+    if (conversationId && conversationSessions.has(conversationId)) {
+      // Continue existing conversation
+      const session = conversationSessions.get(conversationId)!;
+      session.lastAccessed = new Date();
+      conversationHistory = session.history;
+      console.log(`↩️ Continuing conversation ${conversationId} with ${conversationHistory.length} messages`);
+    } else if (!conversationId) {
+      // Start new conversation
+      conversationId = generateConversationId();
+      conversationSessions.set(conversationId, {
+        history: [],
+        createdAt: new Date(),
+        lastAccessed: new Date()
+      });
+      console.log(`🆕 Started new conversation: ${conversationId}`);
+    }
+
+    // Add current message to history safely
+    const userMessage: ChatMessage = { role: 'user', content: message };
+    let session = conversationSessions.get(conversationId!);
+    if (!session) {
+      session = {
+        history: [userMessage],
+        createdAt: new Date(),
+        lastAccessed: new Date()
+      };
+      conversationSessions.set(conversationId!, session);
+    } else {
+      session.history.push(userMessage);
+      session.lastAccessed = new Date();
+    }
+    conversationHistory = session.history;
+
+    // Use your existing sendMessage method (modified to accept history)
+    const response = await agent.sendMessage(message, conversationHistory);
+
+    // Add assistant response safely
+    const assistantMessage: ChatMessage = { role: 'assistant', content: response };
+    session = conversationSessions.get(conversationId!);
+    if (session) {
+      session.history.push(assistantMessage);
+      session.lastAccessed = new Date();
+    }
+
+    // Clean up old conversations
+    cleanupOldConversations();
+
+    // Send the response back with conversation ID
+    res.json({ 
+      response,
+      conversationId,
+      timestamp: new Date().toISOString()
+    });
 
   } catch (error) {
     console.error('❌ Error in /chat endpoint:', error);
@@ -143,6 +206,51 @@ app.post('/v1/chat', async (req, res) => {
   }
 });
 
+// Helper function to generate conversation ID
+function generateConversationId(): string {
+  return `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Clean up conversations older than 24 hours
+function cleanupOldConversations() {
+  const now = new Date();
+  const twentyFourHoursAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+  
+  for (const [conversationId, session] of conversationSessions.entries()) {
+    if (session.lastAccessed < twentyFourHoursAgo) {
+      conversationSessions.delete(conversationId);
+      console.log(`🧹 Cleaned up old conversation: ${conversationId}`);
+    }
+  }
+}
+
+// Add conversation management endpoint
+app.get('/v1/conversations/:conversationId', (req, res) => {
+  const { conversationId } = req.params;
+  const session = conversationSessions.get(conversationId);
+  
+  if (!session) {
+    return res.status(404).json({ error: 'Conversation not found' });
+  }
+  
+  res.json({
+    conversationId,
+    messageCount: session.history.length,
+    createdAt: session.createdAt,
+    lastAccessed: session.lastAccessed,
+    history: session.history
+  });
+});
+
+app.delete('/v1/conversations/:conversationId', (req, res) => {
+  const { conversationId } = req.params;
+  
+  if (conversationSessions.delete(conversationId)) {
+    res.json({ success: true, message: 'Conversation deleted' });
+  } else {
+    res.status(404).json({ error: 'Conversation not found' });
+  }
+});
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 

@@ -43,9 +43,6 @@ export class ContentstackChatAgent {
   private lastIndexUpdate: Date | null = null;
   private config: ChatAgentConfig;
 
-  
-
-  // UPDATED CONSTRUCTOR - Replace your existing constructor with this
   constructor(config: ChatAgentConfig = {}) {
     this.config = config;
     
@@ -60,14 +57,14 @@ export class ContentstackChatAgent {
       temperature: llmTemperature,
     });
 
-    // Initialize MCP client with config
-// Initialize MCP client with only the contentstack config
-this.mcpClient = new ContentstackMCPClient({
-  apiKey: config.contentstack?.apiKey,
-  managementToken: config.contentstack?.deliveryToken, // Note: MCP uses managementToken, not deliveryToken
-  environment: config.contentstack?.environment,
-  region: config.contentstack?.region
-});
+    // Initialize MCP client with only the contentstack config
+    this.mcpClient = new ContentstackMCPClient({
+      apiKey: config.contentstack?.apiKey,
+      managementToken: config.contentstack?.deliveryToken, // Note: MCP uses managementToken, not deliveryToken
+      environment: config.contentstack?.environment,
+      region: config.contentstack?.region
+    });
+
     this.searchService = new SearchService();
     
     // Keep your existing patterns
@@ -82,6 +79,7 @@ this.mcpClient = new ContentstackMCPClient({
       /^(what is this|what is contentstack)/i
     ];
   }
+
   async initialize(): Promise<void> {
     console.log('🤖 Initializing Chat Agent...');
     await this.mcpClient.connect();
@@ -106,7 +104,6 @@ this.mcpClient = new ContentstackMCPClient({
       console.log('✅ Search index generated successfully');
     } catch (error) {
       console.warn('⚠️ Could not generate search index, using existing one if available:', error);
-      // Continue with existing index or empty index
     }
   }
 
@@ -141,7 +138,7 @@ this.mcpClient = new ContentstackMCPClient({
       }
     }
     
-    return null; // No instant match found
+    return null;
   }
 
   private fastContentTypeDetection(userQuery: string): string {
@@ -151,18 +148,15 @@ this.mcpClient = new ContentstackMCPClient({
     if (query.includes('content type') || query.includes('content-type')) return 'content_type';
     
     // ==== CUSTOMIZE THIS FOR YOUR JEWELRY WEBSITE ====
-    // Prioritize and default to 'product' since that's your main content
     if (query.includes('product') || query.includes('jewelry') || query.includes('necklace') || query.includes('earring') || query.includes('ring') || query.includes('bracelet') || query.includes('watch')) return 'product';
     // ================================================
 
-    // Keep other fallbacks
     if (query.includes('entry') || query.includes('page') || query.includes('blog')) return 'page';
     if (query.includes('blog')) return 'blog_post';
     if (query.includes('article')) return 'article';
     if (query.includes('faq') || query.includes('question')) return 'faq';
     
-    // !! CRITICAL FIX !! Change the default to 'product'
-    return 'product'; // NOW defaults to YOUR content type
+    return 'product'; 
   }
 
   private isGeneralMessage(message: string): boolean {
@@ -170,8 +164,9 @@ this.mcpClient = new ContentstackMCPClient({
     return this.generalPatterns.some(pattern => pattern.test(cleaned));
   }
 
-  private buildGeneralContext(): string {
-    const lastFewMessages = this.conversationHistory.slice(-4);
+  // ✅ Fixed: now accepts history
+  private buildGeneralContext(history: ChatMessage[]): string {
+    const lastFewMessages = history.slice(-4);
     
     const historyContext = lastFewMessages
       .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
@@ -195,7 +190,6 @@ YOUR RESPONSE:`.trim();
   }
 
   private cleanResponse(response: any): string {
-    // Extract content from different response types
     let content: string;
     if (typeof response === 'string') {
       content = response;
@@ -214,7 +208,6 @@ YOUR RESPONSE:`.trim();
       content = String(response);
     }
 
-    // Remove markdown formatting
     return content
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/\*(.*?)\*/g, '$1')
@@ -224,130 +217,138 @@ YOUR RESPONSE:`.trim();
       .trim();
   }
 
-  async sendMessage(userMessage: string): Promise<string> {
-    try {
-      // Add user message to history
-      this.conversationHistory.push({ role: 'user', content: userMessage });
-      
-      console.log(`👤 User: ${userMessage}`);
-
-      // 1. ULTRA-FAST PATH: Instant predefined responses
-      const instantResponse = this.getInstantGeneralResponse(userMessage);
-      if (instantResponse) {
-        console.log('⚡ Ultra-fast general response');
-        this.conversationHistory.push({ role: 'assistant', content: instantResponse });
-        return instantResponse; // INSTANT return - no API calls!
-      }
-
-      // 2. FAST PATH: General chat using LLM (existing logic)
-      if (this.isGeneralMessage(userMessage)) {
-        console.log('💬 General chat - using fast path');
-        const generalContext = this.buildGeneralContext();
-        const response = await this.model.invoke(generalContext);
-        const assistantResponse = this.cleanResponse(response);
-        
-        this.conversationHistory.push({ role: 'assistant', content: assistantResponse });
-        return assistantResponse;
-      }
-
-      // 3. SECOND: Try fast search index
-      console.log('🔍 Checking fast search index...');
-      const fastMatch = this.searchService.findBestMatch(userMessage);
-      if (fastMatch) {
-        console.log(`⚡ Fast match found: ${fastMatch.entryId}`);
-        this.conversationHistory.push({ role: 'assistant', content: fastMatch.answer });
-        return fastMatch.answer; // Instant response!
-      }
-
-      // 4. THIRD: Fallback to MCP search
-      console.log('🔍 No fast match, using MCP search...');
-      let relevantContent: string;
-      let queryType: string | undefined;
-
-      const cleaned = userMessage.toLowerCase().trim();
-      
-      if (cleaned.includes('asset') || cleaned.includes('image') || cleaned.includes('file')) {
-        console.log('🔍 Searching for assets...');
-        
-        try {
-          const environments = await this.mcpClient.callTool('get_all_environments', {});
-          const envData = JSON.parse(environments);
-          
-          const availableEnv = envData.environments && envData.environments.length > 0 
-            ? envData.environments[0].name 
-            : 'production';
-          
-          const assetParams = {
-            environment: availableEnv,
-            limit: 10, // Reduced limit for speed
-            skip: 0
-          };
-          
-          relevantContent = await this.mcpClient.callTool('get_all_assets', assetParams);
-          queryType = 'assets';
-          
-        } catch (error) {
-          const environment = process.env.CONTENTSTACK_ENVIRONMENT || 'production';
-          const assetParams = { environment: environment, limit: 10, skip: 0 };
-          relevantContent = await this.mcpClient.callTool('get_all_assets', assetParams);
-          queryType = 'assets';
-        }
-      } else if (cleaned.includes('content type') || cleaned.includes('content-type')) {
-        console.log('🔍 Getting content types...');
-        relevantContent = await this.mcpClient.callTool('get_all_content_types', {});
-        queryType = 'content_types';
-      } else if (cleaned.includes('entr')) {
-        console.log('🔍 Searching for entries...');
-        const contentTypeMatch = userMessage.match(/(page|blog|article|product)/i);
-        // CRITICAL FIX: Changed default from 'page' to 'product'
-        const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : 'product';
-        relevantContent = await this.mcpClient.callTool('get_all_entries', { 
-          content_type_uid: contentType,
-          environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
-          limit: 10 // Reduced limit for speed
-        });
-        queryType = 'entries';
-      } else {
-        console.log('🔍 Determining content type...');
-        const detectedContentType = this.fastContentTypeDetection(userMessage);
-        console.log(`🔍 Smart searching in "${detectedContentType}" content type...`);
-        relevantContent = await this.mcpClient.searchContent(userMessage, detectedContentType);
-      }
-      
-      // 4. Build conversation context
-      const context = this.buildConversationContext(relevantContent, queryType);
-      
-      // 5. Generate response using Gemini
-      console.log('🤖 Generating response...');
-      const response = await this.model.invoke(context);
-      
-      // 6. Clean and add assistant response to history
-      const assistantResponse = this.cleanResponse(response);
-      
-      this.conversationHistory.push({ role: 'assistant', content: assistantResponse });
-      
-      // 7. Keep conversation history manageable
-      if (this.conversationHistory.length > 10) {
-        this.conversationHistory = this.conversationHistory.slice(-10);
-      }
-
-      return assistantResponse;
-
-    } catch (error) {
-      console.error('❌ Error in sendMessage:', error);
-      const errorMessage = 'Sorry, I encountered an error. Please try again.';
-      this.conversationHistory.push({ role: 'assistant', content: errorMessage });
-      return errorMessage;
+async sendMessage(userMessage: string, history: ChatMessage[] = []): Promise<string> {
+  try {
+    // Ensure we have a valid history array
+    if (!history) {
+      history = [];
     }
+
+    // Add user message to history
+    history.push({ role: 'user', content: userMessage });
+    this.conversationHistory = [...history]; // Keep internal sync
+
+    console.log(`👤 User: ${userMessage}`);
+
+    const instantResponse = this.getInstantGeneralResponse(userMessage);
+    if (instantResponse) {
+      console.log('⚡ Ultra-fast general response');
+      history.push({ role: 'assistant', content: instantResponse });
+      this.conversationHistory = [...history];
+      return instantResponse;
+    }
+
+    if (this.isGeneralMessage(userMessage)) {
+      console.log('💬 General chat - using fast path');
+      const generalContext = this.buildGeneralContext(history);
+      const response = await this.model.invoke(generalContext);
+      const assistantResponse = this.cleanResponse(response);
+      history.push({ role: 'assistant', content: assistantResponse });
+      this.conversationHistory = [...history];
+      return assistantResponse;
+    }
+
+    console.log('🔍 Checking fast search index...');
+    const fastMatch = this.searchService.findBestMatch(userMessage);
+    if (fastMatch) {
+      console.log(`⚡ Fast match found: ${fastMatch.entryId}`);
+      history.push({ role: 'assistant', content: fastMatch.answer });
+      this.conversationHistory = [...history];
+      return fastMatch.answer;
+    }
+
+   // ... previous code remains the same ...
+
+console.log('🔍 No fast match, using MCP search...');
+let relevantContent: string = ''; // Initialize with empty string
+let queryType: string | undefined;
+const cleaned = userMessage.toLowerCase().trim();
+
+if (cleaned.includes('asset') || cleaned.includes('image') || cleaned.includes('file')) {
+    console.log('🔍 Searching for assets...');
+    try {
+        const environments = await this.mcpClient.callTool('get_all_environments', {});
+        const envData = JSON.parse(environments);
+        const availableEnv = envData.environments?.[0]?.name ?? 'production';
+        relevantContent = await this.mcpClient.callTool('get_all_assets', {
+            environment: availableEnv,
+            limit: 10,
+            skip: 0
+        });
+        queryType = 'assets';
+    } catch (error) {
+        console.error('Error getting assets:', error);
+        const environment = process.env.CONTENTSTACK_ENVIRONMENT || 'production';
+        relevantContent = await this.mcpClient.callTool('get_all_assets', {
+            environment,
+            limit: 10,
+            skip: 0
+        });
+        queryType = 'assets';
+    }
+} else if (cleaned.includes('content type') || cleaned.includes('content-type')) {
+    console.log('🔍 Getting content types...');
+    relevantContent = await this.mcpClient.callTool('get_all_content_types', {});
+    queryType = 'content_types';
+} else if (cleaned.includes('entr')) {
+    console.log('🔍 Searching for entries...');
+    const contentTypeMatch = userMessage.match(/(page|blog|article|product)/i);
+    const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : 'product';
+    relevantContent = await this.mcpClient.callTool('get_all_entries', {
+        content_type_uid: contentType,
+        environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
+        limit: 10
+    });
+    queryType = 'entries';
+} else {
+    console.log('🔍 Determining content type...');
+    const detectedContentType = this.fastContentTypeDetection(userMessage);
+    console.log(`🔍 Smart searching in "${detectedContentType}" content type...`);
+    relevantContent = await this.mcpClient.searchContent(userMessage, detectedContentType);
+}
+
+// Add a fallback in case relevantContent is still empty
+if (!relevantContent) {
+    console.log('⚠️ No content found, using fallback search...');
+    relevantContent = await this.mcpClient.searchContent(userMessage, 'product');
+}
+
+// ... rest of the code remains the same ...
+    // ... rest of your search logic remains the same ...
+
+    // Use the passed history for context building
+    const context = this.buildConversationContext(relevantContent, queryType, history);
+    console.log('🤖 Generating response...');
+    const response = await this.model.invoke(context);
+    const assistantResponse = this.cleanResponse(response);
+    history.push({ role: 'assistant', content: assistantResponse });
+    this.conversationHistory = [...history];
+
+    // Keep history manageable
+    if (history.length > 10) {
+      history.splice(0, history.length - 10);
+      this.conversationHistory = [...history];
+    }
+
+    return assistantResponse;
+  } catch (error) {
+    console.error('❌ Error in sendMessage:', error);
+    const errorMessage = 'Sorry, I encountered an error. Please try again.';
+    history.push({ role: 'assistant', content: errorMessage });
+    this.conversationHistory = [...history];
+    return errorMessage;
   }
+}
 
-  private buildConversationContext(contentstackData: string, queryType?: string): string {
-    const historyContext = this.conversationHistory
-      .slice(0, -1)
-      .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
-      .join('\n');
+private buildConversationContext(contentstackData: string, queryType?: string, history: ChatMessage[] = []): string {
+  // Use the provided history or fallback to internal history
+  const effectiveHistory = history.length > 0 ? history : this.conversationHistory;
+  
+  const historyContext = effectiveHistory
+    .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
+    .join('\n');
 
-    let instructions = `
+  let instructions = `
 You are a helpful Contentstack assistant. Answer the user's question based on the content from our website.
 
 CONVERSATION HISTORY:
@@ -356,7 +357,7 @@ ${historyContext}
 CONTENTSTACK CONTENT:
 ${contentstackData}
 
-CURRENT USER QUESTION: ${this.conversationHistory[this.conversationHistory.length - 1]?.content}
+CURRENT USER QUESTION: ${effectiveHistory[effectiveHistory.length - 1]?.content}
 
 INSTRUCTIONS:
 1. Answer based ONLY on the Contentstack content provided
@@ -368,28 +369,8 @@ INSTRUCTIONS:
 7. Always respond with plain, clean text only
 `;
 
-    if (queryType === 'assets') {
-      instructions += `
-8. You're showing assets - summarize what's available in a user-friendly way
-9. Don't show raw JSON - describe the assets conversationally
-10. Mention the types of assets available and their purposes
-`;
-    } else if (queryType === 'content_types') {
-      instructions += `
-8. You're showing content types - explain what content types are available
-9. Don't show raw JSON - describe the content types conversationally
-10. Mention what kind of content each type is used for
-`;
-    } else if (queryType === 'entries') {
-      instructions += `
-8. You're showing entries - summarize the content in a user-friendly way
-9. Don't show raw JSON - describe the entries conversationally
-10. Focus on the most relevant information for the user's query
-`;
-    }
-
-    return `${instructions}\n\nYOUR RESPONSE:`.trim();
-  }
+  return `${instructions}\n\nYOUR RESPONSE:`.trim();
+}
 
   getConversationHistory(): ChatMessage[] {
     return [...this.conversationHistory];
@@ -401,7 +382,6 @@ INSTRUCTIONS:
   }
 
   async shutdown(): Promise<void> {
-    // Clean up interval on shutdown
     if (this.reindexInterval) {
       clearInterval(this.reindexInterval);
     }
@@ -409,7 +389,6 @@ INSTRUCTIONS:
     console.log('🔌 Chat Agent shutdown');
   }
 
-  // Wrapper methods
   async callTool(toolName: string, params: Record<string, any>): Promise<string> {
     return this.mcpClient.callTool(toolName, params);
   }
