@@ -24,10 +24,10 @@ function App() {
       </div>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12 mt-20">
+      <footer className="bg-[#FDEBD0] text-black py-12 mt-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <p>&copy; 2024 Glimmer Jewelry. All rights reserved.</p>
-          <p className="text-gray-400 mt-2">Crafted with love and precision</p>
+          <p className="text-gray-900 mt-2">Crafted with love and precision</p>
         </div>
       </footer>
     </div>
