@@ -1,78 +1,137 @@
-// src/search-service.ts (with natural library)
+// src/search-service.ts - OPTIMIZED VERSION
+import { ContentIndexItem , ContentIndexGenerator} from './generate-content-index.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import natural from 'natural';
 
-interface SearchIndexItem {
-  question: string;
-  entryId: string;
+interface SearchMatch {
+  uid: string;
+  title: string;
   contentType: string;
-  answer: string;
-  keywords: string[];
+  description?: string;
+  score: number;
+  keywords?: string[];
 }
 
 export class SearchService {
-  private index: SearchIndexItem[] = [];
-  private tokenizer: any;
-
-  constructor() {
-    // Initialize the tokenizer correctly
-    this.tokenizer = new natural.WordTokenizer();
-  }
+  private index: ContentIndexItem[] = [];
+  private keywordIndex: Map<string, Set<number>> = new Map();
+  private titleIndex: Map<string, Set<number>> = new Map();
 
   async initialize(): Promise<void> {
+    console.time('SearchServiceInit');
+    
     try {
-      const filePath = path.join(process.cwd(), 'search-index.json');
-      const data = await fs.readFile(filePath, 'utf-8');
-      this.index = JSON.parse(data);
-      console.log(`✅ Search service loaded ${this.index.length} index items`);
+      const indexGenerator = new ContentIndexGenerator();
+      this.index = await indexGenerator.getCachedIndex();
+      this.buildIndexes();
+      console.log(`🔍 Search service ready with ${this.index.length} items`);
     } catch (error) {
-      console.error('❌ Error loading search index:', error);
+      console.error('❌ Search service initialization failed:', error);
       this.index = [];
     }
+    
+    console.timeEnd('SearchServiceInit');
   }
 
-  findBestMatch(query: string): SearchIndexItem | null {
-    const queryTokens = this.tokenizer.tokenize(query.toLowerCase()) || [];
-    
-    let bestMatch: SearchIndexItem | null = null;
-    let bestScore = 0;
+  private buildIndexes(): void {
+    // Build keyword index for fast lookup
+    this.index.forEach((item, index) => {
+      if (item.keywords) {
+        item.keywords.forEach(keyword => {
+          if (!this.keywordIndex.has(keyword)) {
+            this.keywordIndex.set(keyword, new Set());
+          }
+          this.keywordIndex.get(keyword)!.add(index);
+        });
+      }
 
+      // Index title words
+      const titleWords = item.title.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+      titleWords.forEach(word => {
+        if (!this.titleIndex.has(word)) {
+          this.titleIndex.set(word, new Set());
+        }
+        this.titleIndex.get(word)!.add(index);
+      });
+    });
+  }
+
+  findBestMatch(query: string): SearchMatch | null {
+    if (!query.trim() || this.index.length === 0) return null;
+
+    const cleanedQuery = query.toLowerCase().trim();
+    const queryWords = cleanedQuery.split(/\s+/).filter(word => word.length > 2);
+    
+    if (queryWords.length === 0) return null;
+
+    // Fast exact match in titles
     for (const item of this.index) {
-      const score = this.calculateMatchScore(queryTokens, item, query);
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatch = item;
+      if (item.title.toLowerCase().includes(cleanedQuery)) {
+        return {
+          ...item,
+          score: 1.0
+        };
       }
     }
 
-    return bestScore > 0.3 ? bestMatch : null;
-  }
+    // Keyword matching with scoring
+    const matches: Map<number, number> = new Map(); // index -> score
 
-  private calculateMatchScore(queryTokens: string[], item: SearchIndexItem, query: string): number {
-    let score = 0;
-    
-    // Check against question
-    const questionTokens = this.tokenizer.tokenize(item.question.toLowerCase()) || [];
-    score += this.getTokenOverlapScore(queryTokens, questionTokens) * 0.4;
-    
-    // Check against keywords
-    score += this.getTokenOverlapScore(queryTokens, item.keywords) * 0.4;
-    
-    // Check for exact matches
-    if (item.question.toLowerCase().includes(query.toLowerCase())) {
-      score += 0.2;
+    queryWords.forEach(word => {
+      // Check keyword index
+      if (this.keywordIndex.has(word)) {
+        this.keywordIndex.get(word)!.forEach(index => {
+          matches.set(index, (matches.get(index) || 0) + 0.8);
+        });
+      }
+
+      // Check title index
+      if (this.titleIndex.has(word)) {
+        this.titleIndex.get(word)!.forEach(index => {
+          matches.set(index, (matches.get(index) || 0) + 1.0);
+        });
+      }
+    });
+
+    if (matches.size === 0) return null;
+
+    // Find best match
+    let bestIndex = -1;
+    let bestScore = 0;
+
+    for (const [index, score] of matches) {
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
     }
 
-    return score;
+    if (bestIndex !== -1 && bestScore > 0.5) {
+      return {
+        ...this.index[bestIndex],
+        score: bestScore
+      };
+    }
+
+    return null;
   }
 
-  private getTokenOverlapScore(tokens1: string[], tokens2: string[]): number {
-    const intersection = tokens1.filter(token => tokens2.includes(token));
-    return intersection.length / Math.max(tokens1.length, 1);
+  getAllItems(): ContentIndexItem[] {
+    return [...this.index];
   }
 
-  getAllIndexedQuestions(): string[] {
-    return this.index.map(item => item.question);
+  searchByContentType(contentType: string): ContentIndexItem[] {
+    return this.index.filter(item => item.contentType === contentType);
+  }
+
+  // Fast bulk search for multiple queries
+  bulkSearch(queries: string[]): Map<string, SearchMatch | null> {
+    const results = new Map<string, SearchMatch | null>();
+    
+    queries.forEach(query => {
+      results.set(query, this.findBestMatch(query));
+    });
+    
+    return results;
   }
 }

@@ -2,7 +2,7 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ContentstackMCPClient } from './mcp-client.js';
 import { SearchService } from './search-service.js';
-import { SearchIndexGenerator } from './generate-search-index.js';
+import { ContentIndexGenerator, ContentIndexItem } from './generate-content-index.js';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -14,9 +14,7 @@ export interface ChatMessage {
   content: string;
 }
 
-// Add this interface at the top of the file (after the imports)
 export interface ChatAgentConfig {
-  // Contentstack Configuration
   contentstack?: {
     apiKey?: string;
     deliveryToken?: string;
@@ -24,13 +22,17 @@ export interface ChatAgentConfig {
     region?: string;
   };
   
-  // LLM Configuration
   llm?: {
     provider: 'google' | 'openai' | 'anthropic';
     apiKey?: string;
     model?: string;
     temperature?: number;
   };
+}
+
+interface ResponseCacheEntry {
+  response: string;
+  timestamp: number;
 }
 
 export class ContentstackChatAgent {
@@ -42,11 +44,12 @@ export class ContentstackChatAgent {
   private reindexInterval: NodeJS.Timeout | null = null;
   private lastIndexUpdate: Date | null = null;
   private config: ChatAgentConfig;
+  private responseCache: Map<string, ResponseCacheEntry> = new Map();
+  private cacheTTL = 2 * 60 * 1000; // 2 minutes
 
   constructor(config: ChatAgentConfig = {}) {
     this.config = config;
     
-    // Use config values or fallback to environment variables
     const llmApiKey = config.llm?.apiKey || process.env.GOOGLE_API_KEY!;
     const llmModel = config.llm?.model || 'gemini-1.5-flash';
     const llmTemperature = config.llm?.temperature || 0.3;
@@ -57,17 +60,15 @@ export class ContentstackChatAgent {
       temperature: llmTemperature,
     });
 
-    // Initialize MCP client with only the contentstack config
     this.mcpClient = new ContentstackMCPClient({
       apiKey: config.contentstack?.apiKey,
-      managementToken: config.contentstack?.deliveryToken, // Note: MCP uses managementToken, not deliveryToken
+      managementToken: config.contentstack?.deliveryToken,
       environment: config.contentstack?.environment,
       region: config.contentstack?.region
     });
 
     this.searchService = new SearchService();
     
-    // Keep your existing patterns
     this.generalPatterns = [
       /^(hi|hello|hey|greetings|good morning|good afternoon|good evening)/i,
       /^(how are you|how's it going|what's up)/i,
@@ -84,34 +85,71 @@ export class ContentstackChatAgent {
     console.log('🤖 Initializing Chat Agent...');
     await this.mcpClient.connect();
     
-    // Auto-generate index on startup
-    console.log('📝 Generating search index...');
-    await this.generateSearchIndex();
+    console.log('📝 Generating content index...');
+    await this.generateContentIndex();
     
     await this.searchService.initialize();
     
-    // Start periodic re-indexing (every 30 minutes)
     this.startPeriodicReindexing(30 * 60 * 1000);
     
     console.log('✅ Chat Agent ready!');
   }
 
-  private async generateSearchIndex(): Promise<void> {
+  private isShowAllQuery(message: string): boolean {
+    const showAllPatterns = [
+      /show\s+(me\s+)?(all|every|complete|full)/i,
+      /display\s+(all|every|complete|full)/i,
+      /list\s+(all|every|complete|full)/i,
+      /what\s+(do\s+you\s+have|products?|items?|collection)/i,
+      /(all|every|complete|full)\s+(products?|items?|collection)/i,
+      /show\s+your\s+collection/i,
+      /show\s+me\s+your\s+products/i,
+      /what's\s+in\s+(your|the)\s+collection/i,
+      /show\s+me\s+everything/i,
+      /all\s+products/i,
+      /complete\s+catalog/i,
+      /full\s+collection/i
+    ];
+    
+    return showAllPatterns.some(pattern => pattern.test(message.toLowerCase()));
+  }
+
+  private formatAllItemsResponse(items: ContentIndexItem[]): string {
+    if (items.length === 0) {
+      return "I don't have any products in my collection yet.";
+    }
+    
+    let response = `Here's my complete collection (${items.length} items):\n\n`;
+    
+    items.forEach((item, index) => {
+      response += `${index + 1}. **${item.title}**`;
+      if (item.description) {
+        response += ` - ${item.description}`;
+      }
+      response += '\n';
+    });
+    
+    response += '\nWould you like to know more about any specific item?';
+    return response;
+  }
+
+  private async generateContentIndex(): Promise<void> {
     try {
-      const indexGenerator = new SearchIndexGenerator();
+      const indexGenerator = new ContentIndexGenerator();
       await indexGenerator.generateIndex();
       this.lastIndexUpdate = new Date();
-      console.log('✅ Search index generated successfully');
+      console.log('✅ Content index generated successfully');
     } catch (error) {
-      console.warn('⚠️ Could not generate search index, using existing one if available:', error);
+      console.warn('⚠️ Could not generate content index, using existing one if available:', error);
     }
   }
 
   private startPeriodicReindexing(intervalMs: number): void {
     this.reindexInterval = setInterval(async () => {
-      console.log('🔄 Periodic search index update...');
-      await this.generateSearchIndex();
-      await this.searchService.initialize(); // Reload the updated index
+      console.log('🔄 Periodic content index update...');
+      await this.generateContentIndex();
+      await this.searchService.initialize();
+      this.responseCache.clear(); // Clear cache when index updates
     }, intervalMs);
   }
 
@@ -147,9 +185,7 @@ export class ContentstackChatAgent {
     if (query.includes('asset') || query.includes('image') || query.includes('file')) return 'asset';
     if (query.includes('content type') || query.includes('content-type')) return 'content_type';
     
-    // ==== CUSTOMIZE THIS FOR YOUR JEWELRY WEBSITE ====
     if (query.includes('product') || query.includes('jewelry') || query.includes('necklace') || query.includes('earring') || query.includes('ring') || query.includes('bracelet') || query.includes('watch')) return 'product';
-    // ================================================
 
     if (query.includes('entry') || query.includes('page') || query.includes('blog')) return 'page';
     if (query.includes('blog')) return 'blog_post';
@@ -164,7 +200,6 @@ export class ContentstackChatAgent {
     return this.generalPatterns.some(pattern => pattern.test(cleaned));
   }
 
-  // ✅ Fixed: now accepts history
   private buildGeneralContext(history: ChatMessage[]): string {
     const lastFewMessages = history.slice(-4);
     
@@ -217,138 +252,214 @@ YOUR RESPONSE:`.trim();
       .trim();
   }
 
-async sendMessage(userMessage: string, history: ChatMessage[] = []): Promise<string> {
-  try {
-    // Ensure we have a valid history array
-    if (!history) {
-      history = [];
-    }
+  private generateCacheKey(userMessage: string, history: ChatMessage[]): string {
+    const recentHistory = history.slice(-3).map(msg => msg.content).join('|');
+    return `${userMessage}|${recentHistory}`;
+  }
 
-    // Add user message to history
-    history.push({ role: 'user', content: userMessage });
-    this.conversationHistory = [...history]; // Keep internal sync
+  private isConversationalMessage(message: string): boolean {
+    const conversationalPatterns = [
+      /^(hi|hello|hey|thanks|thank you|please|sorry)/i,
+      /^(how are you|what's up|good morning|good afternoon|good evening)/i
+    ];
+    
+    return conversationalPatterns.some(pattern => pattern.test(message));
+  }
 
-    console.log(`👤 User: ${userMessage}`);
+  async sendMessage(userMessage: string, history: ChatMessage[] = []): Promise<string> {
+    try {
+      if (!history) {
+        history = [];
+      }
 
-    const instantResponse = this.getInstantGeneralResponse(userMessage);
-    if (instantResponse) {
-      console.log('⚡ Ultra-fast general response');
-      history.push({ role: 'assistant', content: instantResponse });
+      // Check cache first
+      const cacheKey = this.generateCacheKey(userMessage, history);
+      const cached = this.responseCache.get(cacheKey);
+      
+      if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+        console.log('⚡ Response cache hit');
+        return cached.response;
+      }
+
+      history.push({ role: 'user', content: userMessage });
       this.conversationHistory = [...history];
-      return instantResponse;
-    }
 
-    if (this.isGeneralMessage(userMessage)) {
-      console.log('💬 General chat - using fast path');
-      const generalContext = this.buildGeneralContext(history);
-      const response = await this.model.invoke(generalContext);
+      console.log(`👤 User: ${userMessage}`);
+
+      const instantResponse = this.getInstantGeneralResponse(userMessage);
+      if (instantResponse) {
+        console.log('⚡ Ultra-fast general response');
+        history.push({ role: 'assistant', content: instantResponse });
+        this.conversationHistory = [...history];
+        return instantResponse;
+      }
+
+      if (this.isShowAllQuery(userMessage)) {
+        console.log('🔍 Show all collection requested');
+        const allItems = this.searchService.getAllItems();
+        if (allItems.length > 0) {
+          const response = this.formatAllItemsResponse(allItems);
+          history.push({ role: 'assistant', content: response });
+          this.conversationHistory = [...history];
+          
+          // Cache non-conversational responses
+          if (!this.isConversationalMessage(userMessage)) {
+            this.responseCache.set(cacheKey, {
+              response: response,
+              timestamp: Date.now()
+            });
+          }
+          
+          return response;
+        } else {
+          const noItemsResponse = "I don't have any products in my collection yet.";
+          history.push({ role: 'assistant', content: noItemsResponse });
+          this.conversationHistory = [...history];
+          return noItemsResponse;
+        }
+      }
+
+      if (this.isGeneralMessage(userMessage)) {
+        console.log('💬 General chat - using fast path');
+        const generalContext = this.buildGeneralContext(history);
+        const response = await this.model.invoke(generalContext);
+        const assistantResponse = this.cleanResponse(response);
+        history.push({ role: 'assistant', content: assistantResponse });
+        this.conversationHistory = [...history];
+        return assistantResponse;
+      }
+
+      console.log('🔍 Checking fast search index...');
+      const fastMatch = this.searchService.findBestMatch(userMessage);
+      if (fastMatch) {
+        console.log(`⚡ Fast match found: ${fastMatch.uid}`);
+        
+        try {
+          console.log(`📖 Fetching full content for entry ${fastMatch.uid}...`);
+          const fullContent = await this.mcpClient.callTool('get_single_entry', {
+            entry_id: fastMatch.uid,
+            content_type_uid: fastMatch.contentType,
+            environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production'
+          });
+          
+          const context = this.buildConversationContext(fullContent, 'entry', history);
+          const response = await this.model.invoke(context);
+          const assistantResponse = this.cleanResponse(response);
+          
+          history.push({ role: 'assistant', content: assistantResponse });
+          this.conversationHistory = [...history];
+          
+          // Cache the response
+          if (!this.isConversationalMessage(userMessage)) {
+            this.responseCache.set(cacheKey, {
+              response: assistantResponse,
+              timestamp: Date.now()
+            });
+          }
+          
+          return assistantResponse;
+          
+        } catch (error) {
+          console.error('Error fetching full content for fast match:', error);
+          const fallbackResponse = `I found information about "${fastMatch.title}". ${fastMatch.description || 'Would you like to know more about this?'}`;
+          history.push({ role: 'assistant', content: fallbackResponse });
+          this.conversationHistory = [...history];
+          return fallbackResponse;
+        }
+      }
+
+      console.log('🔍 No fast match, using MCP search...');
+      let relevantContent: string = '';
+      let queryType: string | undefined;
+      const cleaned = userMessage.toLowerCase().trim();
+
+      if (cleaned.includes('asset') || cleaned.includes('image') || cleaned.includes('file')) {
+          console.log('🔍 Searching for assets...');
+          try {
+              const environments = await this.mcpClient.callTool('get_all_environments', {});
+              const envData = JSON.parse(environments);
+              const availableEnv = envData.environments?.[0]?.name ?? 'production';
+              relevantContent = await this.mcpClient.callTool('get_all_assets', {
+                  environment: availableEnv,
+                  limit: 10,
+                  skip: 0
+              });
+              queryType = 'assets';
+          } catch (error) {
+              console.error('Error getting assets:', error);
+              const environment = process.env.CONTENTSTACK_ENVIRONMENT || 'production';
+              relevantContent = await this.mcpClient.callTool('get_all_assets', {
+                  environment,
+                  limit: 10,
+                  skip: 0
+              });
+              queryType = 'assets';
+          }
+      } else if (cleaned.includes('content type') || cleaned.includes('content-type')) {
+          console.log('🔍 Getting content types...');
+          relevantContent = await this.mcpClient.callTool('get_all_content_types', {});
+          queryType = 'content_types';
+      } else if (cleaned.includes('entr')) {
+          console.log('🔍 Searching for entries...');
+          const contentTypeMatch = userMessage.match(/(page|blog|article|product)/i);
+          const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : 'product';
+          relevantContent = await this.mcpClient.callTool('get_all_entries', {
+              content_type_uid: contentType,
+              environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
+              limit: 10
+          });
+          queryType = 'entries';
+      } else {
+          console.log('🔍 Determining content type...');
+          const detectedContentType = this.fastContentTypeDetection(userMessage);
+          console.log(`🔍 Smart searching in "${detectedContentType}" content type...`);
+          relevantContent = await this.mcpClient.searchContent(userMessage, detectedContentType);
+      }
+
+      if (!relevantContent) {
+          console.log('⚠️ No content found, using fallback search...');
+          relevantContent = await this.mcpClient.searchContent(userMessage, 'product');
+      }
+
+      const context = this.buildConversationContext(relevantContent, queryType, history);
+      console.log('🤖 Generating response...');
+      const response = await this.model.invoke(context);
       const assistantResponse = this.cleanResponse(response);
       history.push({ role: 'assistant', content: assistantResponse });
       this.conversationHistory = [...history];
+
+      // Cache the response
+      if (!this.isConversationalMessage(userMessage)) {
+        this.responseCache.set(cacheKey, {
+          response: assistantResponse,
+          timestamp: Date.now()
+        });
+      }
+
+      // Keep history manageable
+      if (history.length > 10) {
+        history.splice(0, history.length - 10);
+        this.conversationHistory = [...history];
+      }
+
       return assistantResponse;
-    }
-
-    console.log('🔍 Checking fast search index...');
-    const fastMatch = this.searchService.findBestMatch(userMessage);
-    if (fastMatch) {
-      console.log(`⚡ Fast match found: ${fastMatch.entryId}`);
-      history.push({ role: 'assistant', content: fastMatch.answer });
-      this.conversationHistory = [...history];
-      return fastMatch.answer;
-    }
-
-   // ... previous code remains the same ...
-
-console.log('🔍 No fast match, using MCP search...');
-let relevantContent: string = ''; // Initialize with empty string
-let queryType: string | undefined;
-const cleaned = userMessage.toLowerCase().trim();
-
-if (cleaned.includes('asset') || cleaned.includes('image') || cleaned.includes('file')) {
-    console.log('🔍 Searching for assets...');
-    try {
-        const environments = await this.mcpClient.callTool('get_all_environments', {});
-        const envData = JSON.parse(environments);
-        const availableEnv = envData.environments?.[0]?.name ?? 'production';
-        relevantContent = await this.mcpClient.callTool('get_all_assets', {
-            environment: availableEnv,
-            limit: 10,
-            skip: 0
-        });
-        queryType = 'assets';
     } catch (error) {
-        console.error('Error getting assets:', error);
-        const environment = process.env.CONTENTSTACK_ENVIRONMENT || 'production';
-        relevantContent = await this.mcpClient.callTool('get_all_assets', {
-            environment,
-            limit: 10,
-            skip: 0
-        });
-        queryType = 'assets';
-    }
-} else if (cleaned.includes('content type') || cleaned.includes('content-type')) {
-    console.log('🔍 Getting content types...');
-    relevantContent = await this.mcpClient.callTool('get_all_content_types', {});
-    queryType = 'content_types';
-} else if (cleaned.includes('entr')) {
-    console.log('🔍 Searching for entries...');
-    const contentTypeMatch = userMessage.match(/(page|blog|article|product)/i);
-    const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : 'product';
-    relevantContent = await this.mcpClient.callTool('get_all_entries', {
-        content_type_uid: contentType,
-        environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
-        limit: 10
-    });
-    queryType = 'entries';
-} else {
-    console.log('🔍 Determining content type...');
-    const detectedContentType = this.fastContentTypeDetection(userMessage);
-    console.log(`🔍 Smart searching in "${detectedContentType}" content type...`);
-    relevantContent = await this.mcpClient.searchContent(userMessage, detectedContentType);
-}
-
-// Add a fallback in case relevantContent is still empty
-if (!relevantContent) {
-    console.log('⚠️ No content found, using fallback search...');
-    relevantContent = await this.mcpClient.searchContent(userMessage, 'product');
-}
-
-// ... rest of the code remains the same ...
-    // ... rest of your search logic remains the same ...
-
-    // Use the passed history for context building
-    const context = this.buildConversationContext(relevantContent, queryType, history);
-    console.log('🤖 Generating response...');
-    const response = await this.model.invoke(context);
-    const assistantResponse = this.cleanResponse(response);
-    history.push({ role: 'assistant', content: assistantResponse });
-    this.conversationHistory = [...history];
-
-    // Keep history manageable
-    if (history.length > 10) {
-      history.splice(0, history.length - 10);
+      console.error('❌ Error in sendMessage:', error);
+      const errorMessage = 'Sorry, I encountered an error. Please try again.';
+      history.push({ role: 'assistant', content: errorMessage });
       this.conversationHistory = [...history];
+      return errorMessage;
     }
-
-    return assistantResponse;
-  } catch (error) {
-    console.error('❌ Error in sendMessage:', error);
-    const errorMessage = 'Sorry, I encountered an error. Please try again.';
-    history.push({ role: 'assistant', content: errorMessage });
-    this.conversationHistory = [...history];
-    return errorMessage;
   }
-}
 
-private buildConversationContext(contentstackData: string, queryType?: string, history: ChatMessage[] = []): string {
-  // Use the provided history or fallback to internal history
-  const effectiveHistory = history.length > 0 ? history : this.conversationHistory;
-  
-  const historyContext = effectiveHistory
-    .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
-    .join('\n');
+  private buildConversationContext(contentstackData: string, queryType?: string, history: ChatMessage[] = []): string {
+    const effectiveHistory = history.length > 0 ? history : this.conversationHistory;
+    
+    const historyContext = effectiveHistory
+      .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
+      .join('\n');
 
-  let instructions = `
+    let instructions = `
 You are a helpful Contentstack assistant. Answer the user's question based on the content from our website.
 
 CONVERSATION HISTORY:
@@ -369,8 +480,8 @@ INSTRUCTIONS:
 7. Always respond with plain, clean text only
 `;
 
-  return `${instructions}\n\nYOUR RESPONSE:`.trim();
-}
+    return `${instructions}\n\nYOUR RESPONSE:`.trim();
+  }
 
   getConversationHistory(): ChatMessage[] {
     return [...this.conversationHistory];
@@ -378,7 +489,8 @@ INSTRUCTIONS:
 
   clearConversationHistory(): void {
     this.conversationHistory = [];
-    console.log('🗑️ Conversation history cleared');
+    this.responseCache.clear();
+    console.log('🗑️ Conversation history and cache cleared');
   }
 
   async shutdown(): Promise<void> {
@@ -403,5 +515,27 @@ INSTRUCTIONS:
 
   async getEntries(contentTypeUid: string): Promise<string> {
     return this.mcpClient.callTool('get_all_entries', { content_type_uid: contentTypeUid });
+  }
+
+  async prewarmCommonQueries(queries: string[]): Promise<void> {
+    console.log('🔥 Pre-warming common queries...');
+    
+    for (const query of queries) {
+      try {
+        await this.sendMessage(query, []);
+        console.log(`✅ Pre-warmed: "${query}"`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to pre-warm: "${query}"`, error);
+      }
+    }
+  }
+
+  getCacheStats(): { size: number; hitRate: number } {
+    const totalCalls = this.responseCache.size;
+    // This is a simplified implementation - you'd need to track actual hits/misses
+    return {
+      size: totalCalls,
+      hitRate: totalCalls > 0 ? 0.3 : 0 // Placeholder - implement proper tracking
+    };
   }
 }
