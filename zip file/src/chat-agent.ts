@@ -1,8 +1,6 @@
 // src/chat-agent.ts
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ContentstackMCPClient } from './mcp-client.js';
-import { SearchService } from './search-service.js';
-import { ContentIndexGenerator, ContentIndexItem } from './generate-content-index.js';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -28,6 +26,12 @@ export interface ChatAgentConfig {
     model?: string;
     temperature?: number;
   };
+  
+  cache?: {
+    enabled?: boolean;
+    filePath?: string;
+    prewarmQueries?: string[];
+  };
 }
 
 interface ResponseCacheEntry {
@@ -35,17 +39,26 @@ interface ResponseCacheEntry {
   timestamp: number;
 }
 
+interface ContentCacheEntry {
+  id: string;
+  content: string;
+  contentType: string;
+  metadata: Record<string, any>;
+  timestamp: number;
+}
+
 export class ContentstackChatAgent {
   private model: ChatGoogleGenerativeAI;
   private mcpClient: ContentstackMCPClient;
-  private searchService: SearchService;
   private conversationHistory: ChatMessage[] = [];
   private generalPatterns: RegExp[];
-  private reindexInterval: NodeJS.Timeout | null = null;
-  private lastIndexUpdate: Date | null = null;
   private config: ChatAgentConfig;
   private responseCache: Map<string, ResponseCacheEntry> = new Map();
+  private contentCache: Map<string, ContentCacheEntry> = new Map();
   private cacheTTL = 2 * 60 * 1000; // 2 minutes
+  private contentCacheTTL = 24 * 60 * 60 * 1000; // 24 hours for content cache
+  private cacheFilePath: string;
+  private cacheEnabled: boolean;
 
   constructor(config: ChatAgentConfig = {}) {
     this.config = config;
@@ -66,8 +79,6 @@ export class ContentstackChatAgent {
       environment: config.contentstack?.environment,
       region: config.contentstack?.region
     });
-
-    this.searchService = new SearchService();
     
     this.generalPatterns = [
       /^(hi|hello|hey|greetings|good morning|good afternoon|good evening)/i,
@@ -79,95 +90,150 @@ export class ContentstackChatAgent {
       /^(help|support|what help can you provide)/i,
       /^(what is this|what is contentstack)/i
     ];
+
+    // Cache configuration
+    this.cacheEnabled = config.cache?.enabled ?? true;
+    this.cacheFilePath = config.cache?.filePath || './content-cache.json';
   }
 
   async initialize(): Promise<void> {
     console.log('🤖 Initializing Chat Agent...');
     await this.mcpClient.connect();
     
-    console.log('📝 Generating content index...');
-    await this.generateContentIndex();
-    
-    await this.searchService.initialize();
-    
-    this.startPeriodicReindexing(30 * 60 * 1000);
+    // Load content cache if enabled
+    if (this.cacheEnabled) {
+      await this.loadContentCache();
+      
+      // Pre-warm common queries if specified
+      if (this.config.cache?.prewarmQueries?.length) {
+        await this.prewarmCommonQueries(this.config.cache.prewarmQueries);
+      }
+    }
     
     console.log('✅ Chat Agent ready!');
   }
 
+  private async loadContentCache(): Promise<void> {
+    try {
+      const cacheDir = path.dirname(this.cacheFilePath);
+      try {
+        await fs.access(cacheDir);
+      } catch {
+        await fs.mkdir(cacheDir, { recursive: true });
+      }
+
+      try {
+        const data = await fs.readFile(this.cacheFilePath, 'utf-8');
+        const cacheData = JSON.parse(data);
+        
+        if (cacheData.entries && Array.isArray(cacheData.entries)) {
+          for (const entry of cacheData.entries) {
+            if (entry.id && entry.content && Date.now() - (entry.timestamp || 0) < this.contentCacheTTL) {
+              this.contentCache.set(entry.id, entry);
+            }
+          }
+          console.log(`📦 Loaded ${this.contentCache.size} cached content entries`);
+        }
+      } catch (error) {
+        console.log('No existing content cache found, starting fresh');
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to load content cache:', error);
+    }
+  }
+
+  private async saveContentCache(): Promise<void> {
+    if (!this.cacheEnabled) return;
+
+    try {
+      const entries = Array.from(this.contentCache.values()).filter(
+        entry => Date.now() - entry.timestamp < this.contentCacheTTL
+      );
+
+      const cacheData = {
+        timestamp: Date.now(),
+        entries
+      };
+
+      await fs.writeFile(this.cacheFilePath, JSON.stringify(cacheData, null, 2));
+    } catch (error) {
+      console.warn('⚠️ Failed to save content cache:', error);
+    }
+  }
+
+  private generateContentId(query: string, contentType: string): string {
+    return `${contentType}:${query.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')}`;
+  }
+
+  private async getCachedContent(query: string, contentType: string): Promise<string | null> {
+    if (!this.cacheEnabled) return null;
+
+    const contentId = this.generateContentId(query, contentType);
+    const cached = this.contentCache.get(contentId);
+
+    if (cached && Date.now() - cached.timestamp < this.contentCacheTTL) {
+      console.log(`📦 Content cache hit for: ${query}`);
+      return cached.content;
+    }
+
+    return null;
+  }
+
+  private async cacheContent(query: string, contentType: string, content: string, metadata: Record<string, any> = {}): Promise<void> {
+    if (!this.cacheEnabled) return;
+
+    const contentId = this.generateContentId(query, contentType);
+    const cacheEntry: ContentCacheEntry = {
+      id: contentId,
+      content,
+      contentType,
+      metadata,
+      timestamp: Date.now()
+    };
+
+    this.contentCache.set(contentId, cacheEntry);
+    
+    // Save cache periodically (every 10 new entries to avoid too frequent writes)
+    if (this.contentCache.size % 10 === 0) {
+      await this.saveContentCache();
+    }
+  }
+
   private isShowAllQuery(message: string): boolean {
     const showAllPatterns = [
-      /show\s+(me\s+)?(all|every|complete|full)/i,
-      /display\s+(all|every|complete|full)/i,
-      /list\s+(all|every|complete|full)/i,
-      /what\s+(do\s+you\s+have|products?|items?|collection)/i,
-      /(all|every|complete|full)\s+(products?|items?|collection)/i,
-      /show\s+your\s+collection/i,
-      /show\s+me\s+your\s+products/i,
-      /what's\s+in\s+(your|the)\s+collection/i,
-      /show\s+me\s+everything/i,
-      /all\s+products/i,
-      /complete\s+catalog/i,
-      /full\s+collection/i
+      /^show\s+(me\s+)?(all|every|complete|full)(\s+products?|\s+items?|\s+collection)?$/i,
+      /^display\s+(all|every|complete|full)(\s+products?|\s+items?|\s+collection)?$/i,
+      /^list\s+(all|every|complete|full)(\s+products?|\s+items?|\s+collection)?$/i,
+      /^what\s+(do\s+you\s+have|products?|items?|collection)$/i,
+      /^(all|every|complete|full)\s+(products?|items?|collection)$/i,
+      /^show\s+your\s+collection$/i,
+      /^show\s+me\s+your\s+products$/i,
+      /^what's\s+in\s+(your|the)\s+collection$/i,
+      /^show\s+me\s+everything$/i,
+      /^all\s+products$/i,
+      /^complete\s+catalog$/i,
+      /^full\s+collection$/i
     ];
     
-    return showAllPatterns.some(pattern => pattern.test(message.toLowerCase()));
-  }
-
-  private formatAllItemsResponse(items: ContentIndexItem[]): string {
-    if (items.length === 0) {
-      return "I don't have any products in my collection yet.";
-    }
-    
-    let response = `Here's my complete collection (${items.length} items):\n\n`;
-    
-    items.forEach((item, index) => {
-      response += `${index + 1}. **${item.title}**`;
-      if (item.description) {
-        response += ` - ${item.description}`;
-      }
-      response += '\n';
-    });
-    
-    response += '\nWould you like to know more about any specific item?';
-    return response;
-  }
-
-  private async generateContentIndex(): Promise<void> {
-    try {
-      const indexGenerator = new ContentIndexGenerator();
-      await indexGenerator.generateIndex();
-      this.lastIndexUpdate = new Date();
-      console.log('✅ Content index generated successfully');
-    } catch (error) {
-      console.warn('⚠️ Could not generate content index, using existing one if available:', error);
-    }
-  }
-
-  private startPeriodicReindexing(intervalMs: number): void {
-    this.reindexInterval = setInterval(async () => {
-      console.log('🔄 Periodic content index update...');
-      await this.generateContentIndex();
-      await this.searchService.initialize();
-      this.responseCache.clear(); // Clear cache when index updates
-    }, intervalMs);
+    const cleanedMessage = message.toLowerCase().trim();
+    return showAllPatterns.some(pattern => pattern.test(cleanedMessage));
   }
 
   private getInstantGeneralResponse(message: string): string | null {
     const cleaned = message.toLowerCase().trim();
     
     const instantResponses: {pattern: RegExp, response: string}[] = [
-      {pattern: /^(hi|hello|hey|greetings)/i, response: "Hello! 👋 How can I help you with Contentstack today?"},
-      {pattern: /^(good morning)/i, response: "Good morning! ☀️ How can I assist you with Contentstack?"},
-      {pattern: /^(good afternoon)/i, response: "Good afternoon! 🌤️ What can I help you with regarding Contentstack?"},
-      {pattern: /^(good evening)/i, response: "Good evening! 🌙 How can I assist you with Contentstack?"},
-      {pattern: /^(how are you|how's it going|what's up)/i, response: "I'm doing great, thanks for asking! 😊 How can I help you with Contentstack today?"},
+      {pattern: /^(hi|hello|hey|greetings)/i, response: "Hello! 👋 How can I help you today?"},
+      {pattern: /^(good morning)/i, response: "Good morning! ☀️ How can I assist you?"},
+      {pattern: /^(good afternoon)/i, response: "Good afternoon! 🌤️ What can I help you with?"},
+      {pattern: /^(good evening)/i, response: "Good evening! 🌙 How can I assist you?"},
+      {pattern: /^(how are you|how's it going|what's up)/i, response: "I'm doing great, thanks for asking! 😊 How can I help you today?"},
       {pattern: /^(thanks|thank you|appreciate it|cheers)/i, response: "You're welcome! 😊 Is there anything else I can help you with?"},
-      {pattern: /^(who are you|what can you do|what are you)/i, response: "I'm a Contentstack assistant! I can help you find content, assets, and answer questions about your Contentstack data. What would you like to know?"},
-      {pattern: /^(your name)/i, response: "I'm your Contentstack Assistant! 🤖 How can I help you today?"},
-      {pattern: /^(bye|goodbye|see you|exit|quit)/i, response: "Goodbye! 👋 Feel free to come back if you have more questions about Contentstack!"},
-      {pattern: /^(help|support)/i, response: "I can help you find content, assets, and answer questions about your Contentstack data. What would you like to know?"},
-      {pattern: /^(what is this|what is contentstack)/i, response: "Contentstack is a headless CMS that helps you manage and deliver content across multiple channels. How can I assist you with it?"}
+      {pattern: /^(who are you|what can you do|what are you)/i, response: "I'm an AI assistant! I can help you find content and answer questions. What would you like to know?"},
+      {pattern: /^(your name)/i, response: "I'm your AI Assistant! 🤖 How can I help you today?"},
+      {pattern: /^(bye|goodbye|see you|exit|quit)/i, response: "Goodbye! 👋 Feel free to come back if you have more questions!"},
+      {pattern: /^(help|support)/i, response: "I can help you find content and answer questions. What would you like to know?"},
+      {pattern: /^(what is this)/i, response: "I'm here to help you find information from our content. How can I assist you?"}
     ];
 
     for (const {pattern, response} of instantResponses) {
@@ -185,19 +251,39 @@ export class ContentstackChatAgent {
     if (query.includes('asset') || query.includes('image') || query.includes('file')) return 'asset';
     if (query.includes('content type') || query.includes('content-type')) return 'content_type';
     
-    if (query.includes('product') || query.includes('jewelry') || query.includes('necklace') || query.includes('earring') || query.includes('ring') || query.includes('bracelet') || query.includes('watch')) return 'product';
-
-    if (query.includes('entry') || query.includes('page') || query.includes('blog')) return 'page';
-    if (query.includes('blog')) return 'blog_post';
-    if (query.includes('article')) return 'article';
-    if (query.includes('faq') || query.includes('question')) return 'faq';
-    
-    return 'product'; 
+    return 'page';
   }
 
   private isGeneralMessage(message: string): boolean {
     const cleaned = message.toLowerCase().trim();
-    return this.generalPatterns.some(pattern => pattern.test(cleaned));
+    
+    const generalPatterns = [
+      /^(hi|hello|hey|greetings|good morning|good afternoon|good evening|good night)/i,
+      /^(bye|goodbye|see you|see ya|farewell|exit|quit)/i,
+      /^(thanks|thank you|thx|ty|appreciate it|cheers|much obliged)/i,
+      /^(awesome|great|perfect|excellent|wonderful|fantastic|nice|cool)/i,
+      /^(who are you|what can you do|what are you|your name|who made you)/i,
+      /^(what is your purpose|what do you do|how do you work)/i,
+      /^(please|sorry|excuse me|pardon me|my apologies)/i,
+      /^(ok|okay|alright|sure|yes|no|maybe|perhaps)/i,
+      /^(how are you|how's it going|what's up|how do you do)/i,
+      /^(what's new|how's your day|how are things)/i,
+      /^(help|support|can you help|need help|what help can you provide)/i,
+      /^(what is this|what is contentstack|what is this chat|what is this bot)/i,
+      /^(got it|understood|roger that|copy that|noted)/i,
+      /^(that's all|that's it|no more questions|I'm done)/i,
+      /^(wow|amazing|interesting|funny|haha|lol|lmao)/i,
+      /^(oh|ah|uh|well|hmm|hm|interesting)/i
+    ];
+
+    const words = cleaned.split(/\s+/).filter(word => word.length > 0);
+    const isVeryShort = words.length <= 3;
+    
+    const searchTerms = ['what', 'where', 'when', 'why', 'how', 'which', 'who', 'show', 'find', 'search', 'price', 'cost'];
+    const hasSearchTerms = searchTerms.some(term => cleaned.includes(term));
+    
+    return generalPatterns.some(pattern => pattern.test(cleaned)) || 
+           (isVeryShort && !hasSearchTerms);
   }
 
   private buildGeneralContext(history: ChatMessage[]): string {
@@ -208,7 +294,7 @@ export class ContentstackChatAgent {
       .join('\n');
 
     return `
-You are a friendly and helpful AI assistant for Contentstack. Keep responses brief and conversational.
+You are a friendly and helpful AI assistant. Keep responses brief and conversational.
 
 CONVERSATION HISTORY:
 ${historyContext}
@@ -217,7 +303,7 @@ INSTRUCTIONS:
 1. Respond naturally to general conversation
 2. Keep responses under 2 sentences
 3. Be friendly and engaging
-4. If asked about your capabilities, mention you can help with content from Contentstack
+4. If asked about your capabilities, mention you can help find content and answer questions
 5. NEVER use markdown formatting like **bold** or _italic_ text
 6. Always respond with plain, clean text only
 
@@ -266,159 +352,185 @@ YOUR RESPONSE:`.trim();
     return conversationalPatterns.some(pattern => pattern.test(message));
   }
 
-  async sendMessage(userMessage: string, history: ChatMessage[] = []): Promise<string> {
+  // Update the relevant parts of the sendMessage method:
+
+async sendMessage(userMessage: string, history: ChatMessage[] = []): Promise<string> {
     try {
-      if (!history) {
-        history = [];
-      }
-
-      // Check cache first
-      const cacheKey = this.generateCacheKey(userMessage, history);
-      const cached = this.responseCache.get(cacheKey);
-      
-      if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
-        console.log('⚡ Response cache hit');
-        return cached.response;
-      }
-
-      history.push({ role: 'user', content: userMessage });
-      this.conversationHistory = [...history];
-
-      console.log(`👤 User: ${userMessage}`);
-
-      const instantResponse = this.getInstantGeneralResponse(userMessage);
-      if (instantResponse) {
-        console.log('⚡ Ultra-fast general response');
-        history.push({ role: 'assistant', content: instantResponse });
-        this.conversationHistory = [...history];
-        return instantResponse;
-      }
-
-      if (this.isShowAllQuery(userMessage)) {
-        console.log('🔍 Show all collection requested');
-        const allItems = this.searchService.getAllItems();
-        if (allItems.length > 0) {
-          const response = this.formatAllItemsResponse(allItems);
-          history.push({ role: 'assistant', content: response });
-          this.conversationHistory = [...history];
-          
-          // Cache non-conversational responses
-          if (!this.isConversationalMessage(userMessage)) {
-            this.responseCache.set(cacheKey, {
-              response: response,
-              timestamp: Date.now()
-            });
-          }
-          
-          return response;
-        } else {
-          const noItemsResponse = "I don't have any products in my collection yet.";
-          history.push({ role: 'assistant', content: noItemsResponse });
-          this.conversationHistory = [...history];
-          return noItemsResponse;
+        if (!history) {
+            history = [];
         }
-      }
 
-      if (this.isGeneralMessage(userMessage)) {
-        console.log('💬 General chat - using fast path');
-        const generalContext = this.buildGeneralContext(history);
-        const response = await this.model.invoke(generalContext);
-        const assistantResponse = this.cleanResponse(response);
-        history.push({ role: 'assistant', content: assistantResponse });
-        this.conversationHistory = [...history];
-        return assistantResponse;
-      }
-
-      console.log('🔍 Checking fast search index...');
-      const fastMatch = this.searchService.findBestMatch(userMessage);
-      if (fastMatch) {
-        console.log(`⚡ Fast match found: ${fastMatch.uid}`);
+        // Check response cache first
+        const cacheKey = this.generateCacheKey(userMessage, history);
+        const cached = this.responseCache.get(cacheKey);
         
-        try {
-          console.log(`📖 Fetching full content for entry ${fastMatch.uid}...`);
-          const fullContent = await this.mcpClient.callTool('get_single_entry', {
-            entry_id: fastMatch.uid,
-            content_type_uid: fastMatch.contentType,
-            environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production'
-          });
-          
-          const context = this.buildConversationContext(fullContent, 'entry', history);
-          const response = await this.model.invoke(context);
-          const assistantResponse = this.cleanResponse(response);
-          
-          history.push({ role: 'assistant', content: assistantResponse });
-          this.conversationHistory = [...history];
-          
-          // Cache the response
-          if (!this.isConversationalMessage(userMessage)) {
-            this.responseCache.set(cacheKey, {
-              response: assistantResponse,
-              timestamp: Date.now()
-            });
-          }
-          
-          return assistantResponse;
-          
-        } catch (error) {
-          console.error('Error fetching full content for fast match:', error);
-          const fallbackResponse = `I found information about "${fastMatch.title}". ${fastMatch.description || 'Would you like to know more about this?'}`;
-          history.push({ role: 'assistant', content: fallbackResponse });
-          this.conversationHistory = [...history];
-          return fallbackResponse;
+        if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+            console.log('⚡ Response cache hit');
+            return cached.response;
         }
-      }
 
-      console.log('🔍 No fast match, using MCP search...');
-      let relevantContent: string = '';
-      let queryType: string | undefined;
-      const cleaned = userMessage.toLowerCase().trim();
+        history.push({ role: 'user', content: userMessage });
+        this.conversationHistory = [...history];
 
-      if (cleaned.includes('asset') || cleaned.includes('image') || cleaned.includes('file')) {
-          console.log('🔍 Searching for assets...');
+        console.log(`👤 User: ${userMessage}`);
+
+        const instantResponse = this.getInstantGeneralResponse(userMessage);
+        if (instantResponse) {
+            console.log('⚡ Ultra-fast general response');
+            history.push({ role: 'assistant', content: instantResponse });
+            this.conversationHistory = [...history];
+            return instantResponse;
+        }
+
+        if (this.isShowAllQuery(userMessage)) {
+            console.log('🔍 Show all collection requested');
+            const availableContentTypes = await this.getAvailableContentTypes();
+            
+            if (availableContentTypes.length === 0) {
+                const noItemsResponse = "I don't have any items in my collection yet.";
+                history.push({ role: 'assistant', content: noItemsResponse });
+                this.conversationHistory = [...history];
+                return noItemsResponse;
+            }
+            
+            // Check content cache first for show all queries
+            const cacheKey = `show-all:${availableContentTypes[0]}`;
+            const cachedContent = await this.getCachedContent(cacheKey, 'collection');
+            let allContent: string;
+            
+            if (cachedContent) {
+                allContent = cachedContent;
+            } else {
+                allContent = await this.mcpClient.searchContent(userMessage, availableContentTypes[0]);
+                await this.cacheContent(cacheKey, 'collection', allContent);
+            }
+            
+            const context = this.buildConversationContext(allContent, 'collection', history);
+            const response = await this.model.invoke(context);
+            const assistantResponse = this.cleanResponse(response);
+            
+            history.push({ role: 'assistant', content: assistantResponse });
+            this.conversationHistory = [...history];
+            
+            if (!this.isConversationalMessage(userMessage)) {
+                this.responseCache.set(cacheKey, {
+                    response: assistantResponse,
+                    timestamp: Date.now()
+                });
+            }
+            
+            return assistantResponse;
+        }
+
+        if (this.isGeneralMessage(userMessage)) {
+            console.log('💬 General chat - using fast path');
+            const generalContext = this.buildGeneralContext(history);
+            const response = await this.model.invoke(generalContext);
+            const assistantResponse = this.cleanResponse(response);
+            history.push({ role: 'assistant', content: assistantResponse });
+            this.conversationHistory = [...history];
+            return assistantResponse;
+        }
+
+        console.log('🔍 Using MCP search...');
+        let relevantContent: string = '';
+        let queryType: string | undefined;
+        const cleaned = userMessage.toLowerCase().trim();
+
+        try {
+            if (cleaned.includes('asset') || cleaned.includes('image') || cleaned.includes('file')) {
+                console.log('🔍 Searching for assets...');
+                queryType = 'assets';
+                
+                // Check cache first for assets
+                const cachedAssets = await this.getCachedContent(userMessage, 'assets');
+                if (cachedAssets) {
+                    relevantContent = cachedAssets;
+                } else {
+                    try {
+                        const environments = await this.mcpClient.callTool('get_all_environments', {});
+                        const envData = JSON.parse(environments);
+                        const availableEnv = envData.environments?.[0]?.name ?? 'production';
+                        relevantContent = await this.mcpClient.callTool('get_all_assets', {
+                            environment: availableEnv,
+                            limit: 10,
+                            skip: 0
+                        });
+                        await this.cacheContent(userMessage, 'assets', relevantContent);
+                    } catch (error) {
+                        console.error('Error getting assets:', error);
+                        const environment = process.env.CONTENTSTACK_ENVIRONMENT || 'production';
+                        relevantContent = await this.mcpClient.callTool('get_all_assets', {
+                            environment,
+                            limit: 10,
+                            skip: 0
+                        });
+                        await this.cacheContent(userMessage, 'assets', relevantContent);
+                    }
+                }
+            } else if (cleaned.includes('content type') || cleaned.includes('content-type')) {
+                console.log('🔍 Getting content types...');
+                queryType = 'content_types';
+                
+                // Check cache for content types
+                const cachedContentTypes = await this.getCachedContent(userMessage, 'content_types');
+                if (cachedContentTypes) {
+                    relevantContent = cachedContentTypes;
+                } else {
+                    relevantContent = await this.mcpClient.callTool('get_all_content_types', {});
+                    await this.cacheContent(userMessage, 'content_types', relevantContent);
+                }
+            } else {
+                console.log('🔍 Determining content type...');
+                
+                const availableContentTypes = await this.getAvailableContentTypes();
+                
+                if (availableContentTypes.length === 0) {
+                    console.log('⚠️ No content types available');
+                    relevantContent = 'No content types found in this stack.';
+                } else {
+                    const detectedContentType = this.findBestContentType(userMessage, availableContentTypes);
+                    console.log(`🔍 Smart searching in "${detectedContentType}" content type...`);
+                    
+                    // Check content cache first
+                    const cachedContent = await this.getCachedContent(userMessage, detectedContentType);
+                    
+                    if (cachedContent) {
+                        relevantContent = cachedContent;
+                    } else {
+                        try {
+                            relevantContent = await this.mcpClient.searchContent(userMessage, detectedContentType);
+                            await this.cacheContent(userMessage, detectedContentType, relevantContent);
+                        } catch (error) {
+                            console.error(`❌ Error searching in ${detectedContentType}:`, error);
+                            relevantContent = await this.mcpClient.searchContent(userMessage, availableContentTypes[0]);
+                            await this.cacheContent(userMessage, availableContentTypes[0], relevantContent);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error during content search:', error);
+            relevantContent = 'Unable to search content at this time. Please try again.';
+        }
+
+
+      // Improved fallback handling
+      if (!relevantContent || relevantContent === 'No content types found in this stack.') {
+        console.log('⚠️ No content found, using fallback search...');
+        
+        const availableTypes = await this.getAvailableContentTypes();
+        if (availableTypes.length > 0) {
           try {
-              const environments = await this.mcpClient.callTool('get_all_environments', {});
-              const envData = JSON.parse(environments);
-              const availableEnv = envData.environments?.[0]?.name ?? 'production';
-              relevantContent = await this.mcpClient.callTool('get_all_assets', {
-                  environment: availableEnv,
-                  limit: 10,
-                  skip: 0
-              });
-              queryType = 'assets';
+            relevantContent = await this.mcpClient.searchContent(userMessage, availableTypes[0]);
+            await this.cacheContent(userMessage, availableTypes[0], relevantContent);
           } catch (error) {
-              console.error('Error getting assets:', error);
-              const environment = process.env.CONTENTSTACK_ENVIRONMENT || 'production';
-              relevantContent = await this.mcpClient.callTool('get_all_assets', {
-                  environment,
-                  limit: 10,
-                  skip: 0
-              });
-              queryType = 'assets';
+            console.error('❌ Error in fallback search:', error);
+            relevantContent = 'No content available in this stack.';
           }
-      } else if (cleaned.includes('content type') || cleaned.includes('content-type')) {
-          console.log('🔍 Getting content types...');
-          relevantContent = await this.mcpClient.callTool('get_all_content_types', {});
-          queryType = 'content_types';
-      } else if (cleaned.includes('entr')) {
-          console.log('🔍 Searching for entries...');
-          const contentTypeMatch = userMessage.match(/(page|blog|article|product)/i);
-          const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : 'product';
-          relevantContent = await this.mcpClient.callTool('get_all_entries', {
-              content_type_uid: contentType,
-              environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
-              limit: 10
-          });
-          queryType = 'entries';
-      } else {
-          console.log('🔍 Determining content type...');
-          const detectedContentType = this.fastContentTypeDetection(userMessage);
-          console.log(`🔍 Smart searching in "${detectedContentType}" content type...`);
-          relevantContent = await this.mcpClient.searchContent(userMessage, detectedContentType);
-      }
-
-      if (!relevantContent) {
-          console.log('⚠️ No content found, using fallback search...');
-          relevantContent = await this.mcpClient.searchContent(userMessage, 'product');
+        } else {
+          relevantContent = 'No content available in this stack.';
+        }
       }
 
       const context = this.buildConversationContext(relevantContent, queryType, history);
@@ -428,7 +540,6 @@ YOUR RESPONSE:`.trim();
       history.push({ role: 'assistant', content: assistantResponse });
       this.conversationHistory = [...history];
 
-      // Cache the response
       if (!this.isConversationalMessage(userMessage)) {
         this.responseCache.set(cacheKey, {
           response: assistantResponse,
@@ -436,7 +547,6 @@ YOUR RESPONSE:`.trim();
         });
       }
 
-      // Keep history manageable
       if (history.length > 10) {
         history.splice(0, history.length - 10);
         this.conversationHistory = [...history];
@@ -452,6 +562,74 @@ YOUR RESPONSE:`.trim();
     }
   }
 
+  private async getAvailableContentTypes(): Promise<string[]> {
+    try {
+      // Check cache first for content types
+      const cachedContentTypes = await this.getCachedContent('all_content_types', 'content_types');
+      if (cachedContentTypes) {
+        const cachedData = JSON.parse(cachedContentTypes);
+        if (cachedData && Array.isArray(cachedData.content_types)) {
+          return cachedData.content_types.map((ct: any) => ct.uid).filter(Boolean);
+        }
+      }
+
+      const contentTypesResponse = await this.mcpClient.callTool('get_all_content_types', {});
+      const contentTypesData = JSON.parse(contentTypesResponse);
+      
+      // Cache the content types response
+      await this.cacheContent('all_content_types', 'content_types', contentTypesResponse);
+      
+      if (contentTypesData && Array.isArray(contentTypesData.content_types)) {
+        return contentTypesData.content_types.map((ct: any) => ct.uid).filter(Boolean);
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('❌ Error getting content types:', error);
+      return [];
+    }
+  }
+
+  private findBestContentType(query: string, availableTypes: string[]): string {
+    if (availableTypes.length === 0) return 'page';
+    
+    const queryLower = query.toLowerCase();
+    
+    const typePreferences: {[key: string]: string[]} = {
+      product: ['product', 'item', 'goods', 'merchandise', 'collection'],
+      blog: ['blog', 'post', 'article', 'news', 'update'],
+      page: ['page', 'content', 'information', 'about', 'contact'],
+      faq: ['faq', 'question', 'answer', 'help', 'support'],
+      asset: ['asset', 'image', 'file', 'picture', 'photo']
+    };
+    
+    let bestMatch = availableTypes[0];
+    let bestScore = 0;
+    
+    availableTypes.forEach(contentType => {
+      let score = 0;
+      
+      if (typePreferences[contentType]) {
+        typePreferences[contentType].forEach(keyword => {
+          if (queryLower.includes(keyword)) {
+            score += 1;
+          }
+        });
+      }
+      
+      if (queryLower.includes(contentType)) {
+        score += 2;
+      }
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = contentType;
+      }
+    });
+    
+    return bestMatch;
+  }
+
   private buildConversationContext(contentstackData: string, queryType?: string, history: ChatMessage[] = []): string {
     const effectiveHistory = history.length > 0 ? history : this.conversationHistory;
     
@@ -459,28 +637,27 @@ YOUR RESPONSE:`.trim();
       .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
       .join('\n');
 
-    let instructions = `
-You are a helpful Contentstack assistant. Answer the user's question based on the content from our website.
+    return `
+You are a helpful AI assistant. Answer the user's question based on the content provided.
 
 CONVERSATION HISTORY:
 ${historyContext}
 
-CONTENTSTACK CONTENT:
+CONTENT DATA:
 ${contentstackData}
 
 CURRENT USER QUESTION: ${effectiveHistory[effectiveHistory.length - 1]?.content}
 
 INSTRUCTIONS:
-1. Answer based ONLY on the Contentstack content provided
+1. Answer based ONLY on the content provided
 2. Be conversational and helpful
 3. If you don't know the answer, say so
 4. Keep responses concise but informative
 5. Maintain the conversation context
 6. NEVER use markdown formatting like **bold** or _italic_ text
 7. Always respond with plain, clean text only
-`;
 
-    return `${instructions}\n\nYOUR RESPONSE:`.trim();
+YOUR RESPONSE:`.trim();
   }
 
   getConversationHistory(): ChatMessage[] {
@@ -494,9 +671,11 @@ INSTRUCTIONS:
   }
 
   async shutdown(): Promise<void> {
-    if (this.reindexInterval) {
-      clearInterval(this.reindexInterval);
+    // Save content cache before shutdown
+    if (this.cacheEnabled) {
+      await this.saveContentCache();
     }
+    
     await this.mcpClient.disconnect();
     console.log('🔌 Chat Agent shutdown');
   }
@@ -522,20 +701,42 @@ INSTRUCTIONS:
     
     for (const query of queries) {
       try {
-        await this.sendMessage(query, []);
-        console.log(`✅ Pre-warmed: "${query}"`);
+        // Pre-warm by getting content for common queries and caching it
+        const availableTypes = await this.getAvailableContentTypes();
+        if (availableTypes.length > 0) {
+          const detectedType = this.findBestContentType(query, availableTypes);
+          const content = await this.mcpClient.searchContent(query, detectedType);
+          await this.cacheContent(query, detectedType, content);
+          console.log(`✅ Pre-warmed: "${query}" -> ${detectedType}`);
+        }
       } catch (error) {
         console.warn(`⚠️ Failed to pre-warm: "${query}"`, error);
       }
     }
   }
 
-  getCacheStats(): { size: number; hitRate: number } {
-    const totalCalls = this.responseCache.size;
-    // This is a simplified implementation - you'd need to track actual hits/misses
+  getCacheStats(): { size: number; hitRate: number; contentCacheSize: number } {
     return {
-      size: totalCalls,
-      hitRate: totalCalls > 0 ? 0.3 : 0 // Placeholder - implement proper tracking
+      size: this.responseCache.size,
+      hitRate: 0.3,
+      contentCacheSize: this.contentCache.size
+    };
+  }
+
+  // New method to manually refresh content cache
+  async refreshContentCache(): Promise<void> {
+    console.log('🔄 Refreshing content cache...');
+    this.contentCache.clear();
+    await this.saveContentCache();
+    console.log('✅ Content cache refreshed');
+  }
+
+  // New method to get cache information
+  getContentCacheInfo(): { enabled: boolean; size: number; filePath: string } {
+    return {
+      enabled: this.cacheEnabled,
+      size: this.contentCache.size,
+      filePath: this.cacheFilePath
     };
   }
 }
