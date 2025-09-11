@@ -1,0 +1,33 @@
+{
+  "name": "angupta-chat-sdk",
+  "version": "0.1.7",
+  "description": "A plug-and-play SDK for embedding AI chat agents powered by Contentstack",
+"main": "./dist/index.js",
+"module": "./dist/index.esm.js",
+"types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0",
+    "react-icons": ">=4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": ">=18.0.0",
+    "@types/react-dom": ">=18.0.0",
+    "typescript": "^5.0.0",
+    "react-icons": "^5.5.0"
+  }
+}

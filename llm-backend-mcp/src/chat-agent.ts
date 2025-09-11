@@ -56,10 +56,12 @@ export class ContentstackChatAgent {
   private responseCache: Map<string, ResponseCacheEntry> = new Map();
   private contentCache: Map<string, ContentCacheEntry> = new Map();
   private cacheTTL = 2 * 60 * 1000; // 2 minutes
-  private contentCacheTTL = 24 * 60 * 60 * 1000; // 24 hours for content cache
+private contentCacheTTL = 24 * 60 * 60 * 1000;// 24 hours for content cache
   private cacheFilePath: string;
   private cacheEnabled: boolean;
 
+
+  
   constructor(config: ChatAgentConfig = {}) {
     this.config = config;
     
@@ -165,39 +167,48 @@ export class ContentstackChatAgent {
     return `${contentType}:${query.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')}`;
   }
 
-  private async getCachedContent(query: string, contentType: string): Promise<string | null> {
-    if (!this.cacheEnabled) return null;
-
+// Check if the cache is actually being hit on subsequent requests
+private async getCachedContent(query: string, contentType: string): Promise<string | null> {
     const contentId = this.generateContentId(query, contentType);
-    const cached = this.contentCache.get(contentId);
-
-    if (cached && Date.now() - cached.timestamp < this.contentCacheTTL) {
-      console.log(`📦 Content cache hit for: ${query}`);
-      return cached.content;
-    }
-
-    return null;
-  }
-
-  private async cacheContent(query: string, contentType: string, content: string, metadata: Record<string, any> = {}): Promise<void> {
-    if (!this.cacheEnabled) return;
-
-    const contentId = this.generateContentId(query, contentType);
-    const cacheEntry: ContentCacheEntry = {
-      id: contentId,
-      content,
-      contentType,
-      metadata,
-      timestamp: Date.now()
-    };
-
-    this.contentCache.set(contentId, cacheEntry);
+    console.log('🔍 Looking for cache key:', contentId); // ADD THIS
+    console.log('📦 Available cache keys:', Array.from(this.contentCache.keys())); // ADD THIS
     
-    // Save cache periodically (every 10 new entries to avoid too frequent writes)
-    if (this.contentCache.size % 10 === 0) {
-      await this.saveContentCache();
+    const cached = this.contentCache.get(contentId);
+    
+    if (cached) {
+        console.log('✅ Cache found, freshness check:', Date.now() - cached.timestamp, 'ms old'); // ADD THIS
     }
-  }
+    
+    if (cached && Date.now() - cached.timestamp < this.contentCacheTTL) {
+        console.log('⚡ Cache HIT!'); // ADD THIS
+        return cached.content;
+    }
+    
+    console.log('❌ Cache MISS or expired'); // ADD THIS
+    return null;
+}
+
+private async cacheContent(query: string, contentType: string, content: string): Promise<void> {
+    const contentId = this.generateContentId(query, contentType);
+    console.log('💾 Saving to cache with key:', contentId); // ADD THIS
+    
+    const cacheEntry: ContentCacheEntry = {
+        id: contentId,
+        content,
+        contentType,
+        metadata: { query, timestamp: Date.now() },
+        timestamp: Date.now()
+    };
+    
+    this.contentCache.set(contentId, cacheEntry);
+    console.log('✅ Cache saved. Total entries:', this.contentCache.size); // ADD THIS
+    
+    // Periodically persist to disk
+    if (this.contentCache.size % 10 === 0) {
+        console.log('💿 Persisting cache to disk...'); // ADD THIS
+        await this.saveContentCache();
+    }
+}
 
   private isShowAllQuery(message: string): boolean {
     const showAllPatterns = [

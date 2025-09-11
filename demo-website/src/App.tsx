@@ -1,9 +1,25 @@
-import { ChatWindow } from './ChatWindow';
+import { ChatWindow } from '../../chat-sdk/dist';
 import { Header } from './components/Header';
 import { HeroSection } from './components/HeroSection';
 import { ProductGrid } from './components/ProductGrid';
 
 function App() {
+
+
+const chatConfig = {
+    apiBaseUrl: import.meta.env.VITE_API_BASE_URL,
+    contentstack: {
+      apiKey: import.meta.env.VITE_CONTENTSTACK_API_KEY,
+      deliveryToken: import.meta.env.VITE_CONTENTSTACK_DELIVERY_TOKEN,
+      environment: import.meta.env.VITE_CONTENTSTACK_ENVIRONMENT,
+    },
+    llm: {
+      provider: 'google' as const,
+      apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
+      model: 'gemini-2.5-pro',
+    },
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       <Header />
@@ -20,7 +36,11 @@ function App() {
 
       {/* Floating Chat Window */}
       <div className="fixed bottom-6 right-6 z-50">
-        <ChatWindow />
+         <ChatWindow 
+        config={chatConfig}
+        title="Jewelry Assistant"
+        position="bottom-right"
+      />
       </div>
 
       {/* Footer */}
