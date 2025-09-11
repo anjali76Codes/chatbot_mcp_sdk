@@ -10,7 +10,6 @@
     "dev": "tsx src/index.ts",
     "dev:server": "tsx src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
-    
   },
   "keywords": [
     "contentstack",
@@ -30,7 +29,8 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^4.21.2",
-    "natural": "^8.1.0"
+    "natural": "^8.1.0",
+    "node-cache": "^5.1.2"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
