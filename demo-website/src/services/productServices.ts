@@ -16,12 +16,12 @@ if (typeof window !== 'undefined' && (!API_KEY || !DELIVERY_TOKEN || !ENVIRONMEN
 
 
 // Rest of your code remains the same...
-const getApiBaseUrl = () => {
+export const getApiBaseUrl = () => {
   const regionPrefix = REGION === 'eu' ? 'eu-api' : 'cdn';
   return `https://${regionPrefix}.contentstack.com/v3`;
 };
 
-const getHeaders = () => ({
+export const getHeaders = () => ({
   api_key: API_KEY,
   access_token: DELIVERY_TOKEN,
   'Content-Type': 'application/json',
