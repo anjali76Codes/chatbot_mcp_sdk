@@ -21,7 +21,20 @@ async function main(): Promise<void> {
   const rl = readline.createInterface({ input, output });
   console.log('🚀 Starting Contentstack Chat Agent...\n');
 
-  const chatAgent = new ContentstackChatAgent();
+  const chatAgent = new ContentstackChatAgent({
+    contentstack: {
+      apiKey: process.env.CONTENTSTACK_API_KEY,
+      deliveryToken: process.env.CONTENTSTACK_MANAGEMENT_TOKEN,
+      environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
+      region: process.env.CONTENTSTACK_REGION || 'us'
+    },
+    llm: {
+      provider: 'google',
+      apiKey: process.env.GOOGLE_API_KEY,
+      model: process.env.LLM_MODEL || 'gemini-1.5-flash',
+      temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.3')
+    }
+  });
   
   try {
     await chatAgent.initialize();
@@ -44,29 +57,21 @@ async function main(): Promise<void> {
       }
 
       console.log('🤖 Thinking...');
+      const startTime = Date.now();
 
-      let response: string;
+      // 🚀 LET THE CHAT AGENT HANDLE EVERYTHING AUTOMATICALLY
+      const response = await chatAgent.sendMessage(userInput, history);
 
-      // ✅ Route specific requests to the right tool
-     if (cleaned.includes('assets')) {
-  const toolResult = await chatAgent.callTool('get_all_assets', {});
-  response = await chatAgent.sendMessage(
-    `Here is the raw tool output: ${toolResult}. Please summarize and present it in a user-friendly way.`
-  );
-} else if (cleaned.includes('content types')) {
-  const toolResult = await chatAgent.getContentTypes();
-  response = await chatAgent.sendMessage(
-    `Here is the raw tool output: ${toolResult}. Please explain it in a clear and conversational way.`
-  );
-} else if (cleaned.includes('entries')) {
-  const toolResult = await chatAgent.callTool('get_all_entries', { content_type_uid: 'product' });
-  response = await chatAgent.sendMessage(
-    `Here is the raw tool output: ${toolResult}. Please summarize the entries for the user.`
-  );
-} else {
-  response = await chatAgent.sendMessage(userInput,history);
-}
+      // 🚀 UPDATE HISTORY EFFICIENTLY
+      history.push({ role: 'user', content: userInput });
+      history.push({ role: 'assistant', content: response });
+      
+      // Keep history manageable
+      if (history.length > 10) {
+        history.splice(0, history.length - 10);
+      }
 
+      console.log(`⚡ Response time: ${Date.now() - startTime}ms`);
       console.log(`\n🤖 Assistant: ${response}\n`);
     }
 

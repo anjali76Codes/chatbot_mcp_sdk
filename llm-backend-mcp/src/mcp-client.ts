@@ -12,12 +12,35 @@ export interface MCPClientConfig {
   region?: string;
 }
 
+// 🚀 CONNECTION POOL FOR REUSE
+class MCPConnectionPool {
+  private static instances: Map<string, ContentstackMCPClient> = new Map();
+  
+  static getInstance(config: MCPClientConfig): ContentstackMCPClient {
+    const key = `${config.apiKey}:${config.environment}`;
+    
+    if (!this.instances.has(key)) {
+      this.instances.set(key, new ContentstackMCPClient(config));
+    }
+    
+    return this.instances.get(key)!;
+  }
+  
+  static async cleanup(): Promise<void> {
+    for (const instance of this.instances.values()) {
+      await instance.disconnect();
+    }
+    this.instances.clear();
+  }
+}
+
 export class ContentstackMCPClient {
   private client: Client;
   private transport: StdioClientTransport;
   private availableTools: string[] = [];
   private config: MCPClientConfig;
   private isConnected: boolean = false;
+  private connectionPromise: Promise<void> | null = null;
 
   constructor(config: MCPClientConfig = {}) {
     this.config = config;
@@ -68,18 +91,28 @@ export class ContentstackMCPClient {
       return;
     }
 
-    try {
-      console.log('🔗 Connecting to Contentstack MCP server...');
-      await this.client.connect(this.transport);
-      this.isConnected = true;
-      console.log('✅ MCP Client connected successfully');
-      
-      await this.discoverTools();
-      
-    } catch (error) {
-      console.error('❌ Failed to connect to MCP server:', error);
-      throw new Error(`MCP connection failed: ${error instanceof Error ? error.message : String(error)}`);
+    // 🚀 PREVENT MULTIPLE CONNECTION ATTEMPTS
+    if (this.connectionPromise) {
+      return this.connectionPromise;
     }
+
+    this.connectionPromise = (async () => {
+      try {
+        console.log('🔗 Connecting to Contentstack MCP server...');
+        await this.client.connect(this.transport);
+        this.isConnected = true;
+        console.log('✅ MCP Client connected successfully');
+        
+        await this.discoverTools();
+        
+      } catch (error) {
+        console.error('❌ Failed to connect to MCP server:', error);
+        this.connectionPromise = null;
+        throw new Error(`MCP connection failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    })();
+
+    return this.connectionPromise;
   }
 
   async discoverTools(): Promise<void> {
@@ -93,7 +126,7 @@ export class ContentstackMCPClient {
     }
   }
 
-  async callTool(toolName: string, parameters: any, timeoutMs: number = 10000): Promise<string> {
+  async callTool(toolName: string, parameters: any, timeoutMs: number = 5000): Promise<string> {
     if (!this.isConnected) {
       await this.connect();
     }
@@ -105,10 +138,15 @@ export class ContentstackMCPClient {
 
       console.log(`🛠️ Calling tool: ${toolName}`, this.sanitizeLogParameters(parameters));
       
-      const result = await this.client.callTool({
-        name: toolName,
-        arguments: parameters,
-      });
+      const result = await Promise.race([
+        this.client.callTool({
+          name: toolName,
+          arguments: parameters,
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`Tool ${toolName} timeout after ${timeoutMs}ms`)), timeoutMs)
+        )
+      ]);
 
       return this.extractResponseText(result);
       
@@ -119,6 +157,9 @@ export class ContentstackMCPClient {
         if (error.message.includes('not available')) {
           throw error;
         }
+        if (error.message.includes('timeout')) {
+          throw new Error(`Tool ${toolName} timed out after ${timeoutMs}ms`);
+        }
       }
       
       throw new Error(`Failed to execute tool ${toolName}: ${error}`);
@@ -126,7 +167,6 @@ export class ContentstackMCPClient {
   }
 
   private sanitizeLogParameters(parameters: any): any {
-    // Remove sensitive data from logs
     const sanitized = { ...parameters };
     if (sanitized.apiKey) delete sanitized.apiKey;
     if (sanitized.token) delete sanitized.token;
@@ -137,7 +177,6 @@ export class ContentstackMCPClient {
   private extractResponseText(result: any): string {
     if (!result) return '';
 
-    // Handle different response formats
     if (result.content && Array.isArray(result.content)) {
       const contentText = result.content
         .map((item: any) => {
@@ -154,7 +193,6 @@ export class ContentstackMCPClient {
       }
     }
 
-    // Fallback to stringify
     return typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result);
   }
 
@@ -166,12 +204,12 @@ export class ContentstackMCPClient {
         content_type_uid: contentType,
         environment: this.config.environment || process.env.CONTENTSTACK_ENVIRONMENT || 'production',
         query: query,
-        limit: 20,
+        limit: 20, // Reduced from 20 to 10
         skip: 0,
         locale: 'en-us'
       };
 
-      return await this.callTool('get_all_entries', searchParams, 8000);
+      return await this.callTool('get_all_entries', searchParams, 5000); // Reduced timeout
       
     } catch (error) {
       console.error('❌ Search error:', error);
@@ -179,38 +217,21 @@ export class ContentstackMCPClient {
     }
   }
 
-  async getContentTypes(): Promise<string> {
-    return this.callTool('get_all_content_types', {}, 5000);
-  }
-
-  async getEntryByUid(uid: string, contentType: string): Promise<string> {
-    const params = {
-      content_type_uid: contentType,
-      uid: uid,
-      environment: this.config.environment || process.env.CONTENTSTACK_ENVIRONMENT || 'production'
-    };
-    return this.callTool('get_single_entry', params);
-  }
-
   async disconnect(): Promise<void> {
     try {
       if (this.client && this.isConnected) {
         await this.client.close();
         this.isConnected = false;
+        this.connectionPromise = null;
         console.log('🔌 MCP Client disconnected');
       }
     } catch (error) {
       console.warn('⚠️ Error during disconnection:', error);
     }
   }
-
-  async healthCheck(): Promise<boolean> {
-    try {
-      await this.callTool('get_all_content_types', {}, 3000);
-      return true;
-    } catch (error) {
-      console.error('❌ MCP Health check failed:', error);
-      return false;
-    }
-  }
 }
+
+// Export singleton instance
+export const getMCPClient = (config: MCPClientConfig): ContentstackMCPClient => {
+  return MCPConnectionPool.getInstance(config);
+};

@@ -33,7 +33,7 @@ const initializeServer = async () => {
         provider: 'google',
         apiKey: process.env.GOOGLE_API_KEY,
         model: 'gemini-1.5-flash',
-        temperature: 0.3
+        temperature: 0.7
       }
     });
     
@@ -165,33 +165,7 @@ function cleanupOldConversations() {
   }
 }
 
-// Add conversation management endpoint
-app.get('/v1/conversations/:conversationId', (req, res) => {
-  const { conversationId } = req.params;
-  const session = conversationSessions.get(conversationId);
-  
-  if (!session) {
-    return res.status(404).json({ error: 'Conversation not found' });
-  }
-  
-  res.json({
-    conversationId,
-    messageCount: session.history.length,
-    createdAt: session.createdAt,
-    lastAccessed: session.lastAccessed,
-    history: session.history
-  });
-});
 
-app.delete('/v1/conversations/:conversationId', (req, res) => {
-  const { conversationId } = req.params;
-  
-  if (conversationSessions.delete(conversationId)) {
-    res.json({ success: true, message: 'Conversation deleted' });
-  } else {
-    res.status(404).json({ error: 'Conversation not found' });
-  }
-});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
