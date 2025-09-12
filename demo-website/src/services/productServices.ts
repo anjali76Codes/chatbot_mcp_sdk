@@ -1,75 +1,108 @@
+import { config } from '../../next.config.ts';
+
+
 import type { Product } from '../types/product';
 
-const API_BASE_URL = 'http://localhost:3000';
 
+
+const API_KEY = config.contentstackApiKey || '';
+const DELIVERY_TOKEN = config.contentstackDeliveryToken || '';
+const ENVIRONMENT = config.contentstackEnvironment || '';
+const REGION = config.contentstackRegion || 'us';
+
+if (typeof window !== 'undefined' && (!API_KEY || !DELIVERY_TOKEN || !ENVIRONMENT)) {
+  console.warn('Contentstack environment variables are not properly configured');
+}
+
+
+// Rest of your code remains the same...
+const getApiBaseUrl = () => {
+  const regionPrefix = REGION === 'eu' ? 'eu-api' : 'cdn';
+  return `https://${regionPrefix}.contentstack.com/v3`;
+};
+
+const getHeaders = () => ({
+  api_key: API_KEY,
+  access_token: DELIVERY_TOKEN,
+  'Content-Type': 'application/json',
+});
 export const productService = {
   async getAllProducts(): Promise<Product[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/products`);
+      const response = await fetch(
+        `${getApiBaseUrl()}/content_types/product/entries?environment=${ENVIRONMENT}&limit=100`,
+        { headers: getHeaders() }
+      );
+
       if (!response.ok) {
         throw new Error(`Failed to fetch products: ${response.status} ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      console.log('🔍 RAW API RESPONSE:', data);
-      console.log('🔍 Response type:', typeof data);
-      console.log('🔍 Is array?', Array.isArray(data));
-      
-      // Handle different response structures
-      if (Array.isArray(data)) {
-        console.log('✅ Returning direct array');
-        return data;
-      } else if (data.products && Array.isArray(data.products)) {
-        console.log('✅ Returning data.products');
-        return data.products;
-      } else if (data.data && Array.isArray(data.data)) {
-        console.log('✅ Returning data.data');
-        return data.data;
-      } else if (data.data?.products && Array.isArray(data.data.products)) {
-        console.log('✅ Returning data.data.products');
-        return data.data.products;
-      } else if (data.items && Array.isArray(data.items)) {
-        console.log('✅ Returning data.items');
-        return data.items;
-      } else if (data.entries && Array.isArray(data.entries)) {
-        console.log('✅ Returning data.entries');
-        return data.entries;
-      } else if (data.content && Array.isArray(data.content)) {
-        console.log('✅ Returning data.content');
-        return data.content;
-      } else {
-        // Log the actual structure to help debug
-        console.error('❌ Unexpected API structure. Keys:', Object.keys(data));
-        console.error('❌ Full response:', JSON.stringify(data, null, 2));
-        throw new Error('Invalid API response format');
-      }
+      return data.entries as Product[];
     } catch (error) {
       console.error('Error fetching products:', error);
       throw error;
     }
   },
 
-  async getProductById(id: string): Promise<Product> {
+  async getProductById(uid: string): Promise<Product> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/products/${id}`);
+      const response = await fetch(
+        `${getApiBaseUrl()}/content_types/product/entries/${uid}?environment=${ENVIRONMENT}`,
+        { headers: getHeaders() }
+      );
+
       if (!response.ok) {
-        throw new Error('Failed to fetch product');
+        throw new Error(`Failed to fetch product: ${response.status} ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      
-      // Handle nested product data if needed
-      if (data.product) {
-        return data.product;
-      } else if (data.data) {
-        return data.data;
-      } else if (data.entry) {
-        return data.entry;
-      }
-      return data;
+      return data.entry as Product;
     } catch (error) {
-      console.error('Error fetching product:', error);
+      console.error('Error fetching product by ID:', error);
       throw error;
     }
-  }
+  },
+
+  async searchProducts(params: {
+    category?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    material?: string;
+    limit?: number;
+    skip?: number;
+  }): Promise<Product[]> {
+    try {
+      const query: any = {};
+
+      if (params.category) query.category = params.category;
+      if (params.minPrice !== undefined) query.price = { ...query.price, $gte: params.minPrice };
+      if (params.maxPrice !== undefined) query.price = { ...query.price, $lte: params.maxPrice };
+      if (params.material) query.material = params.material;
+
+      const queryParams = new URLSearchParams();
+      queryParams.append('environment', ENVIRONMENT);
+      queryParams.append('limit', (params.limit || 100).toString());
+      queryParams.append('skip', (params.skip || 0).toString());
+      if (Object.keys(query).length > 0) {
+        queryParams.append('query', JSON.stringify(query));
+      }
+
+      const response = await fetch(
+        `${getApiBaseUrl()}/content_types/product/entries?${queryParams.toString()}`,
+        { headers: getHeaders() }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to search products: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.entries as Product[];
+    } catch (error) {
+      console.error('Error searching products:', error);
+      throw error;
+    }
+  },
 };
