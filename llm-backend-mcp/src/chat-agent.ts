@@ -3,7 +3,7 @@ import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ContentstackMCPClient } from './mcp-client.js';
 import * as dotenv from 'dotenv';
 import { AutoContentMapper } from './auto-content-mapper.js';
-import { DynamicContentRouter } from './dynamic-content-router.js'; // Fixed typo in import
+import { DynamicContentRouter } from './dynamic-content-router.js';
 
 dotenv.config();
 
