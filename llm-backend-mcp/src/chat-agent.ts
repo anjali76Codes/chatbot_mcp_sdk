@@ -2,10 +2,8 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ContentstackMCPClient } from './mcp-client.js';
 import * as dotenv from 'dotenv';
-// Add these imports at the top
 import { AutoContentMapper } from './auto-content-mapper.js';
-
-
+import { DynamicContentRouter } from './dynamic-content-router.js'; // Fixed typo in import
 
 dotenv.config();
 
@@ -23,24 +21,22 @@ export interface ChatAgentConfig {
   };
   
   llm?: {
-    provider: 'google' | 'openai' | 'anthropic'|'groq';
+    provider: 'google' | 'openai' | 'anthropic' | 'groq';
     apiKey?: string;
     model?: string;
     temperature?: number;
   };
 }
 
-// 🚀 CACHE SYSTEM FOR INSTANT RESPONSES
 interface CacheItem {
   data: any;
   timestamp: number;
   expires: number;
 }
 
-
 class ResponseCache {
   private cache = new Map<string, CacheItem>();
-  private defaultTTL = 5 * 60 * 1000; // 5 minutes
+  private defaultTTL = 5 * 60 * 1000;
 
   set(key: string, data: any, ttl: number = this.defaultTTL): void {
     this.cache.set(key, {
@@ -76,15 +72,15 @@ export class ContentstackChatAgent {
   private cache: ResponseCache;
   private availableContentTypes: string[] = [];
   private lastContentTypeUpdate: number = 0;
-// Add this property to the class
-private contentMapper: AutoContentMapper | null = null;
+  private contentMapper: AutoContentMapper | null = null;
+  private contentRouter: DynamicContentRouter | null = null;
 
   constructor(config: ChatAgentConfig = {}) {
     this.config = config;
     this.cache = new ResponseCache();
     
     const llmApiKey = config.llm?.apiKey || process.env.GOOGLE_API_KEY!;
-    const llmModel = config.llm?.model || 'gemini-1.5-flash'; // Faster model
+    const llmModel = config.llm?.model || 'gemini-2.5-flash';
     const llmTemperature = config.llm?.temperature || 0.3;
 
     this.model = new ChatGoogleGenerativeAI({
@@ -93,7 +89,6 @@ private contentMapper: AutoContentMapper | null = null;
       temperature: llmTemperature,
     });
 
-    // Initialize MCP client but don't connect yet
     if (config.contentstack?.apiKey) {
       this.mcpClient = new ContentstackMCPClient({
         apiKey: config.contentstack.apiKey,
@@ -104,43 +99,44 @@ private contentMapper: AutoContentMapper | null = null;
     }
   }
 
-// Update the initialize method
-async initialize(): Promise<void> {
-  console.log('🤖 Initializing Chat Agent...');
-  
-  // Connect to MCP immediately during initialization
-  if (this.mcpClient) {
-    try {
-      console.log('🔗 Connecting to MCP during initialization...');
-      await this.mcpClient.connect();
-      this.isMCPInitialized = true;
-      console.log('✅ MCP connected successfully');
+  async initialize(): Promise<void> {
+    console.log('🤖 Initializing Chat Agent...');
+    
+    if (this.mcpClient) {
+      try {
+        console.log('🔗 Connecting to MCP during initialization...');
+        await this.mcpClient.connect();
+        this.isMCPInitialized = true;
+        console.log('✅ MCP connected successfully');
 
-      // Initialize auto content mapper
-      this.contentMapper = new AutoContentMapper(this.mcpClient);
-      
-      // Generate mapping only if needed
-      if (this.contentMapper.shouldRefreshMapping()) {
-        console.log('🔄 Generating content mapping...');
-        await this.contentMapper.generateMapping();
+        this.contentMapper = new AutoContentMapper(this.mcpClient);
+        
+        if (this.contentMapper.shouldRefreshMapping()) {
+          console.log('🔄 Generating content mapping...');
+          await this.contentMapper.generateMapping();
+        }
+        
+        await this.getAvailableContentTypes(true);
+        
+        // Initialize the dynamic content router
+        this.contentRouter = new DynamicContentRouter(
+          this.model,
+          this.mcpClient,
+          this.availableContentTypes
+        );
+        
+        console.log('🔥 Caches warmed up successfully');
+      } catch (error) {
+        console.error('❌ MCP connection failed:', error);
+        console.log('⚠️ MCP will not be available for this session');
+        this.mcpClient = null;
       }
-      
-      // Pre-warm content types cache
-      await this.getAvailableContentTypes(true);
-      console.log('🔥 Caches warmed up successfully');
-    } catch (error) {
-      console.error('❌ MCP connection failed:', error);
-      console.log('⚠️ MCP will not be available for this session');
-      this.mcpClient = null;
+    } else {
+      console.log('ℹ️ No MCP client configured - running in LLM-only mode');
     }
-  } else {
-    console.log('ℹ️ No MCP client configured - running in LLM-only mode');
+    
+    console.log('✅ Chat Agent ready!');
   }
-  
-  console.log('✅ Chat Agent ready!');
-}
-
-  
 
   private async ensureMCPConnected(): Promise<void> {
     if (!this.isMCPInitialized && this.mcpClient) {
@@ -156,63 +152,57 @@ async initialize(): Promise<void> {
     }
   }
 
-  // 🚀 ULTRA-FAST INTENT DETECTION
-  private needsContentAccess(userMessage: string): boolean {
+  // SIMPLIFIED INTENT DETECTION - Uses LangChain agent for deep understanding
+  private async needsContentAccess(userMessage: string): Promise<boolean> {
     const lowerMessage = userMessage.toLowerCase().trim();
     
-    // ⚡ INSTANT GENERAL CONVERSATION DETECTION
+    // First check for obvious general conversation patterns
     const generalPatterns = [
-      /^(hi|hello|hey|greetings|hola|bonjour|namaste|howdy|yo|sup|wassup|what's up)/i,
-      /^(good\s+(morning|afternoon|evening|day))/i,
-      /^(thanks|thank you|thx|ty|appreciate it|cheers)/i,
-      /^(please|pls|plz|sorry|excuse me|pardon)/i,
-      /^(bye|goodbye|see ya|see you|farewell|cya|adios)/i,
-      /^(how are you|how're you|how do you do|what's new)/i,
-      /^(who are you|what are you|what can you do|your name)/i,
-      /^(help|support|assist|guide|instructions)/i,
-      /^(yes|no|maybe|sure|ok|okay|alright|fine|cool)/i,
-      /^(what is this|what's this|explain|tell me about)/i,
-      /^(awesome|great|perfect|excellent|wonderful|nice)/i
+      // Greetings
+      /^(hi|hello|hey|greetings|hola|bonjour|namaste|howdy|yo|sup|wassup|what's up|good morning|good afternoon|good evening)/i,
+      // Gratitude
+      /^(thanks|thank you|thx|ty|appreciate it|cheers|grateful|much obliged)/i,
+      // Farewells
+      /^(bye|goodbye|see ya|see you|farewell|cya|adios|take care|have a good one)/i,
+      // Politeness
+      /^(please|pls|plz|sorry|excuse me|pardon|my apologies|forgive me)/i,
+      // Small talk
+      /^(how are you|how're you|how do you do|what's new|how's it going|how have you been)/i,
+      // Identity questions
+      /^(who are you|what are you|what can you do|your name|are you ai|are you a bot|are you human)/i,
+      // Simple responses
+      /^(yes|no|maybe|sure|ok|okay|alright|fine|cool|great|awesome|perfect|excellent)/i,
+      // Compliments
+      /^(good job|well done|nice work|awesome job|you're smart|you're helpful)/i
     ];
 
-    // Check for general patterns first (fastest path)
-    if (generalPatterns.some(pattern => pattern.test(lowerMessage))) {
+    // Check for general patterns first
+    const isGeneralConversation = generalPatterns.some(pattern => pattern.test(lowerMessage));
+    if (isGeneralConversation) {
+      console.log('💬 Detected general conversation - no content access needed');
       return false;
     }
 
-    // ⚡ CONTENT-RELATED KEYWORDS (OPTIMIZED)
-    const contentKeywords = [
-      'product', 'item', 'show', 'find', 'search', 'get', 'list',
-      'price', 'cost', 'buy', 'purchase', 'shop', 'order',
-      'detail', 'spec', 'feature', 'information', 'info',
-      'image', 'photo', 'picture', 'file', 'asset',
-      'collection', 'catalog', 'inventory', 'stock',
-      'jewelry', 'jhumka', 'necklace', 'ring', 'bracelet', 'earring'
-    ];
+    // For everything else, use the LangChain agent to determine if content is needed
+    if (this.contentRouter) {
+      try {
+        const needsContent = await this.contentRouter.determineIfContentNeeded(userMessage);
+        console.log(`🔍 Content router determined content needed: ${needsContent}`);
+        return needsContent;
+      } catch (error) {
+        console.error('❌ Error in content router:', error);
+        // Fallback: assume content is needed for non-general conversations
+        return true;
+      }
+    }
 
-    return contentKeywords.some(keyword => lowerMessage.includes(keyword));
-  }
-
-  private isShowAllQuery(message: string): boolean {
-    const lowerMessage = message.toLowerCase().trim();
-    
-    const showAllPatterns = [
-      /^show\s+(all|every|everything|complete|full)/,
-      /^display\s+(all|every|everything|complete|full)/,
-      /^list\s+(all|every|everything|complete|full)/,
-      /^what\s+(do you have|products|items|collection)/,
-      /^(all|every|complete|full)\s+(products|items|collection)/,
-      /^show\s+(me\s+)?your\s+(collection|products|items)/,
-      /^what's\s+(in|available)\s+(your|the)\s+(collection|store)/,
-      /^see\s+(all|everything|all items)/,
-      /^browse\s+(all|everything|collection)/
-    ];
-
-    return showAllPatterns.some(pattern => pattern.test(lowerMessage));
+    // Fallback: if no router, assume content is needed
+    console.log('🔍 No content router - assuming content needed');
+    return true;
   }
 
   private buildGeneralContext(history: ChatMessage[]): string {
-    const lastFewMessages = history.slice(-3); // Reduced from 4 to 3
+    const lastFewMessages = history.slice(-3);
     
     const historyContext = lastFewMessages
       .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
@@ -228,10 +218,11 @@ INSTRUCTIONS:
 1. Respond naturally to general conversation
 2. Keep responses under 2 sentences
 3. Be friendly and engaging
-4. If asked about your capabilities, mention you can help find content and answer questions
+4. If asked about your capabilities, mention you can help find information
 5. NEVER use markdown formatting
 6. Always respond with plain, clean text only
 7. Response must be under 50 words
+8. Don't mention that you can't help with content if it's a general conversation
 
 YOUR RESPONSE:`.trim();
   }
@@ -264,30 +255,30 @@ YOUR RESPONSE:`.trim();
       .trim();
   }
 
-async sendMessage(userMessage: string, history: ChatMessage[] = []): Promise<string> {
-  const startTime = Date.now();
-  
-  try {
+  async sendMessage(userMessage: string, history: ChatMessage[] = []): Promise<string> {
+    const startTime = Date.now();
+    
+    try {
       if (!history) history = [];
       history.push({ role: 'user', content: userMessage });
       this.conversationHistory = [...history];
 
       console.log(`👤 User: ${userMessage}`);
 
-      // 🚀 ULTRA-FAST INTENT DETECTION
-      const needsContent = this.needsContentAccess(userMessage);
+      // 🚀 IMPROVED INTENT DETECTION with LangChain agent
+      const needsContent = await this.needsContentAccess(userMessage);
       
       if (!needsContent) {
-          console.log('💬 General conversation - using LLM only (no MCP)');
-          const generalContext = this.buildGeneralContext(history);
-          const response = await this.model.invoke(generalContext);
-          const assistantResponse = this.cleanResponse(response);
-          
-          history.push({ role: 'assistant', content: assistantResponse });
-          this.conversationHistory = [...history];
-          
-          console.log(`⚡ Response time: ${Date.now() - startTime}ms`);
-          return assistantResponse;
+        console.log('💬 General conversation - using LLM only');
+        const generalContext = this.buildGeneralContext(history);
+        const response = await this.model.invoke(generalContext);
+        const assistantResponse = this.cleanResponse(response);
+        
+        history.push({ role: 'assistant', content: assistantResponse });
+        this.conversationHistory = [...history];
+        
+        console.log(`⚡ Response time: ${Date.now() - startTime}ms`);
+        return assistantResponse;
       }
 
       // If MCP is not available, respond with a helpful message
@@ -300,229 +291,154 @@ async sendMessage(userMessage: string, history: ChatMessage[] = []): Promise<str
 
       console.log('🔍 Content-related query - checking cache first...');
       
-      // 🚀 CACHE CHECK BEFORE MCP CONNECTION
+      // 🚀 CACHE CHECK
       const cacheKey = `query:${userMessage.toLowerCase().trim()}`;
       const cachedResponse = this.cache.get(cacheKey);
       
       if (cachedResponse) {
-          console.log('🎯 Cache hit - returning cached response');
-          history.push({ role: 'assistant', content: cachedResponse });
-          this.conversationHistory = [...history];
-          
-          console.log(`⚡ Response time: ${Date.now() - startTime}ms (CACHED)`);
-          return cachedResponse;
+        console.log('🎯 Cache hit - returning cached response');
+        history.push({ role: 'assistant', content: cachedResponse });
+        this.conversationHistory = [...history];
+        
+        console.log(`⚡ Response time: ${Date.now() - startTime}ms (CACHED)`);
+        return cachedResponse;
       }
 
       console.log('🔍 Cache miss - ensuring MCP is connected...');
-      await this.ensureMCPConnected();
+      // await this.ensureMCPConnected();
 
-      let relevantContent: string = '';
       let assistantResponse: string = '';
 
-      // 🚀 ULTRA-FAST AUTO-MAPPER LOGIC
-      if (this.contentMapper && Object.keys(this.contentMapper['mapping'].products).length > 0) {
-          console.log('🔍 Using auto-mapper for ultra-fast search...');
-          
-          // Check for budget queries
-          if (userMessage.toLowerCase().includes('budget')) {
-              const affordableProducts = this.contentMapper.findProductsByBudget(userMessage);
-              if (affordableProducts.length > 0) {
-                  relevantContent = `Affordable products within your budget:\n${affordableProducts
-                    .map(p => `• ${p.fields.title} - ${p.fields.price}`)
-                    .join('\n')}`;
-              } else {
-                  relevantContent = 'No products found within your budget.';
-              }
-          } 
-          // Check for show all queries
-          else if (this.isShowAllQuery(userMessage)) {
-              console.log('🔍 Show all collection requested');
-              const allProducts = this.contentMapper.getAllProducts();
-              if (allProducts.length === 0) {
-                  assistantResponse = "I don't have any items in my collection yet.";
-              } else {
-                  relevantContent = `All available products:\n${allProducts
-                    .map(p => `• ${p.fields.title} - ${p.fields.price}`)
-                    .join('\n')}`;
-              }
-          }
-          // Check for specific product queries
-          else {
-              const product = this.contentMapper.findProduct(userMessage);
-              if (product) {
-                  // Direct response from mapper (0ms latency!)
-                  assistantResponse = this.contentMapper.generateResponse(product);
-                  console.log('🎯 Auto-mapper direct hit!');
-              }
-          }
-
-          // If we got a direct response from auto-mapper, use it
-          if (assistantResponse) {
-              this.cache.set(cacheKey, assistantResponse, 2 * 60 * 1000);
-              history.push({ role: 'assistant', content: assistantResponse });
-              this.conversationHistory = [...history];
-              console.log(`⚡ Response time: ${Date.now() - startTime}ms (AUTO-MAPPER)`);
-              return assistantResponse;
-          }
-      }
-
-      // 🚀 FALLBACK TO MCP SEARCH (if auto-mapper didn't find it or is empty)
-      if (!assistantResponse) {
-          console.log('🔍 Auto-mapper missed, falling back to MCP search...');
-          
-          if (this.isShowAllQuery(userMessage)) {
-              const availableContentTypes = await this.getAvailableContentTypes();
-              if (availableContentTypes.length === 0) {
-                  assistantResponse = "I don't have any items in my collection yet.";
-              } else {
-                  const allContent = await this.mcpClient!.searchContent(userMessage, availableContentTypes[0]);
-                  const context = this.buildConversationContext(allContent, 'collection', history);
-                  const response = await this.model.invoke(context);
-                  assistantResponse = this.cleanResponse(response);
-              }
-          } else {
-              const availableContentTypes = await this.getAvailableContentTypes();
-              
-              if (availableContentTypes.length === 0) {
-                  relevantContent = 'No content types found in this stack.';
-              } else {
-                  const detectedContentType = this.findBestContentType(userMessage, availableContentTypes);
-                  console.log(`🔍 Smart searching in "${detectedContentType}" content type...`);
-                  
-                  try {
-                      relevantContent = await this.mcpClient!.searchContent(userMessage, detectedContentType);
-                  } catch (error) {
-                      console.error(`❌ Error searching in ${detectedContentType}:`, error);
-                      relevantContent = await this.mcpClient!.searchContent(userMessage, availableContentTypes[0]);
-                  }
-              }
-
-              const context = this.buildConversationContext(relevantContent, undefined, history);
-              console.log('🤖 Generating response...');
-              const response = await this.model.invoke(context);
-              assistantResponse = this.cleanResponse(response);
-          }
+      // 🚀 USE LANGCHAIN AGENT FOR CONTENT ROUTING
+      if (this.contentRouter) {
+        try {
+          console.log('🧠 Using LangChain agent for content routing...');
+          assistantResponse = await this.contentRouter.routeQuery(userMessage, history);
+        } catch (error) {
+          console.error('❌ Error in content router:', error);
+          // Fallback to direct MCP search
+          assistantResponse = await this.fallbackContentSearch(userMessage, history);
+        }
+      } else {
+        // Fallback to direct MCP search
+        assistantResponse = await this.fallbackContentSearch(userMessage, history);
       }
 
       // Cache successful responses
-      if (!assistantResponse.includes('Unable to') && !assistantResponse.includes('No content')) {
-          this.cache.set(cacheKey, assistantResponse, 2 * 60 * 1000);
+      if (assistantResponse && 
+          !assistantResponse.includes('Unable to') && 
+          !assistantResponse.includes('No content') &&
+          !assistantResponse.includes("couldn't find") &&
+          !assistantResponse.includes("error")) {
+        this.cache.set(cacheKey, assistantResponse, 2 * 60 * 1000);
       }
       
       history.push({ role: 'assistant', content: assistantResponse });
       this.conversationHistory = [...history];
 
-      if (history.length > 8) {
-          history.splice(0, history.length - 8);
-          this.conversationHistory = [...history];
+      // Keep conversation history manageable
+      if (history.length > 10) {
+        history.splice(0, history.length - 10);
+        this.conversationHistory = [...history];
       }
 
       console.log(`⚡ Response time: ${Date.now() - startTime}ms`);
       return assistantResponse;
-  } catch (error) {
+    } catch (error) {
       console.error('❌ Error in sendMessage:', error);
       const errorMessage = 'Sorry, I encountered an error. Please try again.';
       history.push({ role: 'assistant', content: errorMessage });
       this.conversationHistory = [...history];
       return errorMessage;
-  }
-}
-
-// Update the getAvailableContentTypes method to fix the tool name
-private async getAvailableContentTypes(forceRefresh: boolean = false): Promise<string[]> {
-  // 🚀 CACHED CONTENT TYPES
-  const now = Date.now();
-  const cacheKey = 'content_types';
-  
-  if (!forceRefresh && this.availableContentTypes.length > 0 && 
-      (now - this.lastContentTypeUpdate) < 5 * 60 * 1000) {
-    return this.availableContentTypes;
-  }
-
-  try {
-    if (!this.mcpClient) {
-      throw new Error('MCP client not initialized');
     }
+  }
+
+  // Fallback content search method
+  private async fallbackContentSearch(userMessage: string, history: ChatMessage[]): Promise<string> {
+    console.log('🔍 Falling back to direct content search...');
     
-    // Ensure MCP is connected before making the call
-    await this.ensureMCPConnected();
-    
-    // ✅ CORRECTED TOOL NAME: get_all_content_types (not get_all_content_typpes)
-    const contentTypesResponse = await this.mcpClient.callTool('get_all_content_types', {});
-    const contentTypesData = JSON.parse(contentTypesResponse);
-    
-    if (contentTypesData && Array.isArray(contentTypesData.content_types)) {
-      this.availableContentTypes = contentTypesData.content_types
-        .map((ct: any) => ct.uid)
-        .filter(Boolean);
+    try {
+      const availableContentTypes = await this.getAvailableContentTypes();
       
-      this.lastContentTypeUpdate = now;
+      if (availableContentTypes.length === 0) {
+        return "I don't have any content available to answer your question.";
+      }
+      
+      // Try each content type until we find results
+      for (const contentType of availableContentTypes) {
+        try {
+          const searchResult = await this.mcpClient!.searchContent(userMessage, contentType);
+          
+          if (searchResult && !searchResult.includes('Unable to') && !searchResult.includes('No content')) {
+            const context = this.buildConversationContext(searchResult, undefined, history);
+            const response = await this.model.invoke(context);
+            const assistantResponse = this.cleanResponse(response);
+            
+            if (assistantResponse && !assistantResponse.includes('Unable to')) {
+              console.log(`✅ Found results in ${contentType}`);
+              return assistantResponse;
+            }
+          }
+        } catch (error) {
+          console.log(`❌ Error searching in ${contentType}:`, error);
+          continue; // Try next content type
+        }
+      }
+      
+      // If still no response after trying all content types
+      return "I couldn't find specific information about that. Could you try asking in a different way?";
+    } catch (error) {
+      console.error('❌ Error in fallback content search:', error);
+      return "I encountered an error while searching for information. Please try again.";
+    }
+  }
+
+  private async getAvailableContentTypes(forceRefresh: boolean = false): Promise<string[]> {
+    const now = Date.now();
+    const cacheKey = 'content_types';
+    
+    if (!forceRefresh && this.availableContentTypes.length > 0 && 
+        (now - this.lastContentTypeUpdate) < 5 * 60 * 1000) {
       return this.availableContentTypes;
     }
-    
-    return [];
-  } catch (error) {
-    console.error('❌ Error getting content types:', error);
-    return this.availableContentTypes.length > 0 ? this.availableContentTypes : [];
-  }
-}
 
-  private findBestContentType(query: string, availableTypes: string[]): string {
-    if (availableTypes.length === 0) return 'page';
-    if (availableTypes.length === 1) return availableTypes[0];
-    
-    const queryLower = query.toLowerCase();
-    
-    // 🚀 OPTIMIZED CONTENT TYPE MATCHING
-    const typeScores: {[key: string]: number} = {};
-    
-    availableTypes.forEach(type => {
-      typeScores[type] = 0;
-      
-      // Direct match
-      if (queryLower.includes(type)) {
-        typeScores[type] += 3;
+    try {
+      if (!this.mcpClient) {
+        throw new Error('MCP client not initialized');
       }
       
-      // Common synonyms
-      const synonyms: {[key: string]: string[]} = {
-        product: ['item', 'goods', 'merchandise', 'product', 'collection'],
-        blog: ['post', 'article', 'news', 'update', 'blog'],
-        page: ['content', 'information', 'about', 'contact', 'page'],
-        faq: ['question', 'answer', 'help', 'support', 'faq'],
-        asset: ['image', 'file', 'picture', 'photo', 'asset']
-      };
+      await this.ensureMCPConnected();
       
-      Object.entries(synonyms).forEach(([mainType, words]) => {
-        if (type === mainType) {
-          words.forEach(word => {
-            if (queryLower.includes(word)) {
-              typeScores[type] += 2;
-            }
-          });
+      const contentTypesResponse = await this.mcpClient.callTool('get_all_content_types', {});
+      const contentTypesData = JSON.parse(contentTypesResponse);
+      
+      if (contentTypesData && Array.isArray(contentTypesData.content_types)) {
+        this.availableContentTypes = contentTypesData.content_types
+          .map((ct: any) => ct.uid)
+          .filter(Boolean);
+        
+        this.lastContentTypeUpdate = now;
+        
+        // Update content router with new content types
+        if (this.contentRouter) {
+          this.contentRouter.updateContentTypes(this.availableContentTypes);
         }
-      });
-    });
-    
-    // Find best match
-    let bestType = availableTypes[0];
-    let bestScore = typeScores[availableTypes[0]];
-    
-    for (let i = 1; i < availableTypes.length; i++) {
-      if (typeScores[availableTypes[i]] > bestScore) {
-        bestScore = typeScores[availableTypes[i]];
-        bestType = availableTypes[i];
+        
+        return this.availableContentTypes;
       }
+      
+      return [];
+    } catch (error) {
+      console.error('❌ Error getting content types:', error);
+      return this.availableContentTypes.length > 0 ? this.availableContentTypes : [];
     }
-    
-    return bestType;
   }
 
   private buildConversationContext(contentstackData: string, queryType?: string, history: ChatMessage[] = []): string {
     const effectiveHistory = history.length > 0 ? history : this.conversationHistory;
     
     const historyContext = effectiveHistory
-      .slice(-3) // Reduced context window
+      .slice(-3)
       .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
       .join('\n');
 

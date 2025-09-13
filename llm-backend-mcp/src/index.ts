@@ -31,7 +31,7 @@ async function main(): Promise<void> {
     llm: {
       provider: 'google',
       apiKey: process.env.GOOGLE_API_KEY,
-      model: process.env.LLM_MODEL || 'gemini-1.5-flash',
+      model: process.env.LLM_MODEL || 'gemini-2.5-flash',
       temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.3')
     }
   });

@@ -14,7 +14,7 @@ export class StreamingContentstackChatAgent {
   constructor() {
     this.model = new ChatGoogleGenerativeAI({
       apiKey: process.env.GOOGLE_API_KEY!,
-      model: 'gemini-1.5-flash', // ⚡ Faster model
+      model: 'gemini-2.5-flash', // ⚡ Faster model
       temperature: 0.3, // Less creative, more focused
     });
 

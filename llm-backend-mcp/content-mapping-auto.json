@@ -1,5 +1,82 @@
 {
   "products": {
+    "return-process": {
+      "entry_uid": "blt4086b810e4f15853",
+      "content_type": "shipping_policies",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Return Process",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "1-year-warranty": {
+      "entry_uid": "bltdf2a68f5d8f9d1b2",
+      "content_type": "shipping_policies",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "1-Year Warranty",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "30-day-return-policy": {
+      "entry_uid": "blt04bd625223637e4e",
+      "content_type": "shipping_policies",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "30-Day Return Policy",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "free-shipping-offer": {
+      "entry_uid": "blt4b77b5c295f030c3",
+      "content_type": "shipping_policies",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Free Shipping Offer",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "domestic-shipping": {
+      "entry_uid": "blta756eecc488d6ed2",
+      "content_type": "shipping_policies",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Domestic Shipping",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "jhumka-earrings-antique-finish": {
+      "entry_uid": "blt8c9d4bddf3063272",
+      "content_type": "product",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Jhumka Earrings (Antique Finish)",
+        "price": "₹5000",
+        "description": "Traditional Indian bell-shaped earrings with intricate antique detailing.",
+        "image": "https://eu-images.contentstack.com/v3/assets/blt4cbafc76bc5ca664/bltb9308626a0488048/68c041d52dcc0b7da68f40e3/Jhumka_Earrings.jpg"
+      }
+    },
+    "diamond-halo-earrings": {
+      "entry_uid": "blt1dbc29e3b0b5bda2",
+      "content_type": "product",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Diamond Halo Earrings",
+        "price": "₹55000",
+        "description": "Elegant earrings with a central diamond surrounded by a halo.",
+        "image": "https://eu-images.contentstack.com/v3/assets/blt4cbafc76bc5ca664/blt7d4839419c1d1273/68c03bfbbfa0dde43bfddfa1/Diamond_Halo_Earrings.jpg"
+      }
+    },
     "emerald-cut-tennis-bracelet": {
       "entry_uid": "blteda68016ed3d3dab",
       "content_type": "product",
@@ -30,7 +107,7 @@
         "title": "Payal (Anklet)",
         "price": "₹87000",
         "description": "A delicate silver anklet with tiny bells, a staple in Indian jewelry.",
-        "image": "https://eu-images.contentstack.com/v3/assets/blt4cbafc76bc5ca664/blt29e73a7a0157827a/68c04330d6892e3e5902044c/Payal_(Anklet).jpg"
+        "image": "https://eu-images.contentstack.com/v3/assets/blt4cbafc76bc5ca664/blt29e73a7a0157827a/68c51b0f448f74d30aa191c4/Payal_(Anklet).jpg"
       }
     },
     "navratna-ring": {
@@ -42,17 +119,6 @@
         "price": "₹40000",
         "description": "A ring featuring nine sacred gems (Navratna) in a traditional Indian setting.",
         "image": "https://eu-images.contentstack.com/v3/assets/blt4cbafc76bc5ca664/blte090fef5b7fe82d5/68c042554b42369f7b18949e/Navratna_Ring.jpg"
-      }
-    },
-    "jhumka-earrings-antique-finish": {
-      "entry_uid": "blt8c9d4bddf3063272",
-      "content_type": "product",
-      "response_template": "The {title} is priced at {price}.",
-      "fields": {
-        "title": "Jhumka Earrings (Antique Finish)",
-        "price": "₹35000",
-        "description": "Traditional Indian bell-shaped earrings with intricate antique detailing.",
-        "image": "https://eu-images.contentstack.com/v3/assets/blt4cbafc76bc5ca664/bltb9308626a0488048/68c041d52dcc0b7da68f40e3/Jhumka_Earrings.jpg"
       }
     },
     "kundan-choker-set": {
@@ -119,17 +185,6 @@
         "price": "₹80000",
         "description": "A set of three thin, stackable gold bangles.",
         "image": "https://eu-images.contentstack.com/v3/assets/blt4cbafc76bc5ca664/blt2b91c3a4e160d02f/68c03d7d3e3604c4779e4bcd/bangle_set.jpg"
-      }
-    },
-    "diamond-halo-earrings": {
-      "entry_uid": "blt1dbc29e3b0b5bda2",
-      "content_type": "product",
-      "response_template": "The {title} is priced at {price}.",
-      "fields": {
-        "title": "Diamond Halo Earrings",
-        "price": "Price not available",
-        "description": "Elegant earrings with a central diamond surrounded by a halo.",
-        "image": "https://eu-images.contentstack.com/v3/assets/blt4cbafc76bc5ca664/blt7d4839419c1d1273/68c03bfbbfa0dde43bfddfa1/Diamond_Halo_Earrings.jpg"
       }
     },
     "classic-silver-chain": {
@@ -219,13 +274,186 @@
         "description": "A classic necklace featuring a brilliant solitaire diamond.",
         "image": "https://eu-images.contentstack.com/v3/assets/blt4cbafc76bc5ca664/bltee3aa094f909a778/68c00f0387298c54d9b4fcee/Diamond_Solitaire_Necklace.jpg"
       }
+    },
+    "support-availability": {
+      "entry_uid": "blt350dc08701465cd6",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Support Availability",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "contact-information": {
+      "entry_uid": "blt9859be5a10988b50",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Contact Information",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "warranty-information": {
+      "entry_uid": "blt00e07197b6e6e17f",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Warranty Information",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "shipping-time": {
+      "entry_uid": "blt0feac223298a9b2b",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Shipping Time",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "international-shipping": {
+      "entry_uid": "blt2c5dd2cfad821005",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "International Shipping",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "materials-quality": {
+      "entry_uid": "blt5fd6257f3823a833",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Materials Quality",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "ring-sizing": {
+      "entry_uid": "bltf33bf9a0bfe6ed9b",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Ring Sizing",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "returns-policy": {
+      "entry_uid": "bltb4c28c33f6fbb657",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Returns Policy",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "custom-orders": {
+      "entry_uid": "blt8b02cc024f5ccc0f",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Custom Orders",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "jewelry-care": {
+      "entry_uid": "blt753adb2f0d0acdc0",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Jewelry Care",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "payment-options": {
+      "entry_uid": "blt7c1030863f3c2e70",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Payment Options",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
+    "gift-wrapping": {
+      "entry_uid": "blt862934bb21607d3c",
+      "content_type": "faqs",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "Gift Wrapping",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
     }
   },
   "categories": {},
   "search_aliases": {
+    "return-process": [
+      "return process",
+      "return",
+      "process"
+    ],
+    "1-year-warranty": [
+      "1-year warranty",
+      "1-year",
+      "warranty"
+    ],
+    "30-day-return-policy": [
+      "30-day return policy",
+      "30-day",
+      "return",
+      "policy"
+    ],
+    "free-shipping-offer": [
+      "free shipping offer",
+      "free",
+      "shipping",
+      "offer"
+    ],
+    "domestic-shipping": [
+      "domestic shipping",
+      "domestic",
+      "shipping"
+    ],
+    "jhumka-earrings-antique-finish": [
+      "jhumka earrings (antique finish)",
+      "jhumka",
+      "earrings",
+      "(antique",
+      "finish)"
+    ],
+    "diamond-halo-earrings": [
+      "diamond halo earrings",
+      "diamond",
+      "halo",
+      "earrings"
+    ],
     "emerald-cut-tennis-bracelet": [
       "emerald cut tennis bracelet",
       "emerald",
+      "cut",
       "tennis",
       "bracelet",
       "bracelets"
@@ -248,17 +476,11 @@
       "ring",
       "rings"
     ],
-    "jhumka-earrings-antique-finish": [
-      "jhumka earrings (antique finish)",
-      "jhumka",
-      "earrings",
-      "(antique",
-      "finish)"
-    ],
     "kundan-choker-set": [
       "kundan choker set",
       "kundan",
       "choker",
+      "set",
       "necklaces"
     ],
     "maang-tikka-indian-headpiece": [
@@ -293,13 +515,8 @@
     "bangle-set": [
       "bangle set",
       "bangle",
+      "set",
       "bracelets"
-    ],
-    "diamond-halo-earrings": [
-      "diamond halo earrings",
-      "diamond",
-      "halo",
-      "earrings"
     ],
     "classic-silver-chain": [
       "classic silver chain",
@@ -347,6 +564,7 @@
     "sapphire-and-diamond-ring": [
       "sapphire and diamond ring",
       "sapphire",
+      "and",
       "diamond",
       "ring",
       "rings"
@@ -357,7 +575,72 @@
       "solitaire",
       "necklace",
       "necklaces"
+    ],
+    "support-availability": [
+      "support availability",
+      "support",
+      "availability",
+      "business hours"
+    ],
+    "contact-information": [
+      "contact information",
+      "contact",
+      "information",
+      "general contact"
+    ],
+    "warranty-information": [
+      "warranty information",
+      "warranty",
+      "information",
+      "quality"
+    ],
+    "shipping-time": [
+      "shipping time",
+      "shipping",
+      "time"
+    ],
+    "international-shipping": [
+      "international shipping",
+      "international",
+      "shipping"
+    ],
+    "materials-quality": [
+      "materials quality",
+      "materials",
+      "quality"
+    ],
+    "ring-sizing": [
+      "ring sizing",
+      "ring",
+      "sizing"
+    ],
+    "returns-policy": [
+      "returns policy",
+      "returns",
+      "policy"
+    ],
+    "custom-orders": [
+      "custom orders",
+      "custom",
+      "orders",
+      "services"
+    ],
+    "jewelry-care": [
+      "jewelry care",
+      "jewelry",
+      "care"
+    ],
+    "payment-options": [
+      "payment options",
+      "payment",
+      "options"
+    ],
+    "gift-wrapping": [
+      "gift wrapping",
+      "gift",
+      "wrapping",
+      "services"
     ]
   },
-  "last_updated": "2025-09-12T12:17:02.031Z"
+  "last_updated": "2025-09-13T08:49:09.942Z"
 }

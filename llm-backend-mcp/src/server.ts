@@ -13,12 +13,6 @@ app.use(express.json());
 // Initialize chat agent instance
 let chatAgent: ContentstackChatAgent;
 
-// Define ChatMessage type
-type ChatMessage = {
-  role: 'user' | 'assistant';
-  content: string;
-};
-
 // Async initialization function
 const initializeServer = async () => {
   try {
@@ -32,7 +26,7 @@ const initializeServer = async () => {
       llm: {
         provider: 'google',
         apiKey: process.env.GOOGLE_API_KEY,
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         temperature: 0.7
       }
     });
@@ -45,127 +39,41 @@ const initializeServer = async () => {
   }
 };
 
-// Add conversation storage
-const conversationSessions = new Map<string, {
-  history: ChatMessage[];
-  createdAt: Date;
-  lastAccessed: Date;
-}>();
-
-// Define the main chat endpoint
+// SIMPLIFIED chat endpoint - no conversation history, no session management
 app.post('/v1/chat', async (req, res) => {
   try {
-    const { 
-      message, 
-      config, 
-      conversationId: providedConversationId, 
-      resetConversation = false 
-    } = req.body;
+    const { message } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    console.log(`📨 Received message: ${message}`, { 
-      conversationId: providedConversationId, 
-      resetConversation 
-    });
+    console.log(`📨 Received message: ${message}`);
 
-    let agent = chatAgent;
-    let conversationHistory: ChatMessage[] = [];
-
-    // If config is provided, create a new agent instance
-    if (config) {
-      console.log('🔄 Creating new chat agent with provided configuration');
-      agent = new ContentstackChatAgent(config);
-      await agent.initialize();
-    }
-
-    // Handle conversation state
-    let conversationId = providedConversationId;
+    const startTime = Date.now();
     
-    if (resetConversation && conversationId) {
-      conversationSessions.delete(conversationId);
-      conversationId = undefined;
-    }
+    // Use the globally initialized chat agent
+    // Pass empty history to mimic CLI behavior
+    const response = await chatAgent.sendMessage(message, []);
 
-    if (conversationId && conversationSessions.has(conversationId)) {
-      const session = conversationSessions.get(conversationId)!;
-      session.lastAccessed = new Date();
-      conversationHistory = session.history;
-      console.log(`↩️ Continuing conversation ${conversationId} with ${conversationHistory.length} messages`);
-    } else if (!conversationId) {
-      conversationId = generateConversationId();
-      conversationSessions.set(conversationId, {
-        history: [],
-        createdAt: new Date(),
-        lastAccessed: new Date()
-      });
-      console.log(`🆕 Started new conversation: ${conversationId}`);
-    }
+    const responseTime = Date.now() - startTime;
+    console.log(`⚡ Response time: ${responseTime}ms`);
 
-    // Add current message to history
-    const userMessage: ChatMessage = { role: 'user', content: message };
-    let session = conversationSessions.get(conversationId!);
-    if (!session) {
-      session = {
-        history: [userMessage],
-        createdAt: new Date(),
-        lastAccessed: new Date()
-      };
-      conversationSessions.set(conversationId!, session);
-    } else {
-      session.history.push(userMessage);
-      session.lastAccessed = new Date();
-    }
-    conversationHistory = session.history;
-
-    // Use sendMessage method
-    const response = await agent.sendMessage(message, conversationHistory);
-
-    // Add assistant response
-    const assistantMessage: ChatMessage = { role: 'assistant', content: response };
-    session = conversationSessions.get(conversationId!);
-    if (session) {
-      session.history.push(assistantMessage);
-      session.lastAccessed = new Date();
-    }
-
-    // Clean up old conversations
-    cleanupOldConversations();
-
-    // Send the response back
+    // Send the response back - simplified response without conversation ID
     res.json({ 
       response,
-      conversationId,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      responseTime
     });
 
   } catch (error) {
     console.error('❌ Error in /chat endpoint:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
-
-// Helper function to generate conversation ID
-function generateConversationId(): string {
-  return `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
-
-// Clean up conversations older than 24 hours
-function cleanupOldConversations() {
-  const now = new Date();
-  const twentyFourHoursAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
-  
-  for (const [conversationId, session] of conversationSessions.entries()) {
-    if (session.lastAccessed < twentyFourHoursAgo) {
-      conversationSessions.delete(conversationId);
-      console.log(`🧹 Cleaned up old conversation: ${conversationId}`);
-    }
-  }
-}
-
-
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -176,11 +84,21 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Clear cache endpoint (optional)
+app.post('/v1/clear-cache', (req, res) => {
+  if (chatAgent) {
+    chatAgent.clearConversationHistory();
+    console.log('🗑️ Cache cleared via API');
+  }
+  res.json({ status: 'Cache cleared' });
+});
+
 // Initialize and start the server
 initializeServer().then(() => {
   app.listen(port, () => {
     console.log(`🚀 Model API server running on http://localhost:${port}`);
     console.log(`✅ Health check available at http://localhost:${port}/health`);
+    console.log(`💬 Chat endpoint: POST http://localhost:${port}/v1/chat`);
   });
 }).catch(error => {
   console.error('❌ Failed to start server:', error);

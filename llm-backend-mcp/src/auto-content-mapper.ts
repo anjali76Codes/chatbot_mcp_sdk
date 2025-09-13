@@ -311,4 +311,7 @@ export class AutoContentMapper {
   isEmpty(): boolean {
     return Object.keys(this.mapping.products).length === 0;
   }
+
+
+  
 }
