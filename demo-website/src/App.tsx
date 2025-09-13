@@ -1,6 +1,6 @@
 // src/App.tsx
 import { Routes, Route } from 'react-router-dom'
-import { ChatWindow } from '../../chat-sdk/dist'
+import { ChatWindow } from 'angupta-chat-sdk';
 import { HomePage } from './pages/HomePage'
 import { FAQsPage } from './pages/FAQsPage'
 import { PoliciesPage } from './pages/PoliciesPage'
