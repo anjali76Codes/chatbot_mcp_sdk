@@ -1,6 +1,6 @@
 // src/App.tsx
 import { Routes, Route } from 'react-router-dom'
-import { ChatWindow } from 'angupta-chat-sdk';
+import { ChatWindow } from 'angupta-chat-sdk'
 import { HomePage } from './pages/HomePage'
 import { FAQsPage } from './pages/FAQsPage'
 import { PoliciesPage } from './pages/PoliciesPage'
@@ -36,9 +36,11 @@ function App() {
       <div className="fixed bottom-6 right-6 z-50">
         <ChatWindow 
           config={chatConfig}
+          streaming={true}
           title="Jewelry Assistant"
           position="bottom-right"
         />
+        
       </div>
 
       {/* Footer - appears on all pages */}

@@ -138,6 +138,10 @@ export class ContentstackChatAgent {
     console.log('✅ Chat Agent ready!');
   }
 
+
+
+
+
   private async ensureMCPConnected(): Promise<void> {
     if (!this.isMCPInitialized && this.mcpClient) {
       try {
@@ -352,6 +356,73 @@ YOUR RESPONSE:`.trim();
       return errorMessage;
     }
   }
+
+
+
+  async *sendMessageStream(userMessage: string, history: ChatMessage[] = []): AsyncGenerator<string> {
+  const startTime = Date.now();
+  
+  try {
+    if (!history) history = [];
+    history.push({ role: 'user', content: userMessage });
+    this.conversationHistory = [...history];
+
+    console.log(`👤 User (stream): ${userMessage}`);
+
+    // 🚀 IMPROVED INTENT DETECTION with LangChain agent
+    const needsContent = await this.needsContentAccess(userMessage);
+    
+    if (!needsContent) {
+      console.log('💬 General conversation - using LLM only (stream)');
+      const generalContext = this.buildGeneralContext(history);
+      
+      // Use streaming instead of invoke
+      const stream = await this.model.stream(generalContext);
+      
+      let fullResponse = '';
+      for await (const chunk of stream) {
+        const chunkText = this.cleanResponse(chunk);
+        if (chunkText) {
+          fullResponse += chunkText;
+          yield chunkText;
+        }
+      }
+      
+      history.push({ role: 'assistant', content: fullResponse });
+      this.conversationHistory = [...history];
+      
+      console.log(`⚡ Stream response time: ${Date.now() - startTime}ms`);
+      return;
+    }
+
+    // If MCP is not available, respond with a helpful message
+    if (!this.mcpClient) {
+      const noMCPResponse = "I can help with general questions, but content access is not configured. Please check your Contentstack settings.";
+      yield noMCPResponse;
+      history.push({ role: 'assistant', content: noMCPResponse });
+      this.conversationHistory = [...history];
+      return;
+    }
+
+    console.log('🔍 Content-related query - streaming response...');
+
+    // For content-related queries, we'll still stream the final response
+    // (You could enhance this to stream content retrieval too)
+    const finalResponse = await this.sendMessage(userMessage, history);
+    
+    // Stream the final response character by character for smooth streaming
+    for (let i = 0; i < finalResponse.length; i++) {
+      yield finalResponse[i];
+      // Small delay for smooth streaming effect
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
+  } catch (error) {
+    console.error('❌ Error in sendMessageStream:', error);
+    const errorMessage = 'Sorry, I encountered an error. Please try again.';
+    yield errorMessage;
+  }
+}
 
   // Fallback content search method
   private async fallbackContentSearch(userMessage: string, history: ChatMessage[]): Promise<string> {

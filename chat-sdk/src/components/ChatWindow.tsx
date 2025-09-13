@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatAgent } from '../hooks/useChatAgent';
-import { ChatConfig, SendMessageOptions } from '../types';
-import { FaPaperPlane, FaRedo, FaTimes, FaComment, FaStop, FaGem } from 'react-icons/fa';
+import { ChatConfig, ChatMessage, SendMessageOptions, StreamingChunk } from '../types';
+import { FaPaperPlane, FaRedo, FaTimes, FaStop, FaGem } from 'react-icons/fa';
 
 interface ChatWindowProps {
   config: ChatConfig;
@@ -31,7 +31,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
-  const [localMessages, setLocalMessages] = useState<Array<{role: string, content: string, timestamp?: Date}>>([]);
+  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
@@ -40,6 +40,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     isLoading, 
     error, 
     sendMessage, 
+    sendMessageStream,
     clearMessages, 
     cancelRequest,
     canCancel
@@ -68,7 +69,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     e.preventDefault();
     if (inputMessage.trim() && !isLoading) {
       // Add user message immediately to UI
-      const userMessage = {
+      const userMessage: ChatMessage = {
         role: 'user',
         content: inputMessage.trim(),
         timestamp: new Date()
@@ -77,20 +78,61 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setLocalMessages(prev => [...prev, userMessage]);
       setInputMessage('');
       
-      const options: SendMessageOptions = {
-        stream: streaming,
-        onChunk: streaming ? (chunk) => {
-          // Optional: handle individual chunks if needed
-          console.log('Received chunk:', chunk);
-        } : undefined
-      };
-
       try {
-        await sendMessage(inputMessage.trim(), options);
+        if (streaming) {
+          // Use streaming method
+          await sendMessageStream(inputMessage.trim(), {
+            onChunk: (chunk: StreamingChunk) => {
+              if (chunk.done) {
+                // Streaming completed
+                return;
+              }
+              
+              // Update the last assistant message with the streaming content
+              setLocalMessages(prev => {
+                const newMessages = [...prev];
+                const lastMessage = newMessages[newMessages.length - 1];
+                
+                if (lastMessage.role === 'assistant') {
+                  // Update existing assistant message
+                  newMessages[newMessages.length - 1] = {
+                    ...lastMessage,
+                    content: lastMessage.content + chunk.content
+                  };
+                } else {
+                  // Create new assistant message
+                  newMessages.push({
+                    role: 'assistant',
+                    content: chunk.content,
+                    timestamp: new Date(),
+                    isStreaming: true
+                  });
+                }
+                return newMessages;
+              });
+            }
+          });
+
+          // Remove streaming flag when done
+          setLocalMessages(prev => prev.map(msg => ({
+            ...msg,
+            isStreaming: false
+          })));
+
+        } else {
+          // Use regular non-streaming method
+          await sendMessage(inputMessage.trim());
+        }
       } catch (error) {
-        // Proper error type checking
         if (!isAbortError(error)) {
           console.error('Failed to send message:', error);
+          // Add error message to UI
+          const errorMessage: ChatMessage = {
+            role: 'assistant',
+            content: 'Sorry, I encountered an error. Please try again.',
+            timestamp: new Date()
+          };
+          setLocalMessages(prev => [...prev, errorMessage]);
         }
       }
     }
@@ -175,6 +217,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   : 'bg-white text-gray-800 rounded-bl-none border border-amber-200 shadow-sm'
               }`}>
                 {msg.content}
+                {msg.isStreaming && (
+                  <span className="inline-block w-2 h-4 bg-amber-400 ml-1 animate-pulse"></span>
+                )}
                 <div className={`text-xs mt-1 ${msg.role === 'user' ? 'text-amber-100' : 'text-amber-600'}`}>
                   {msg.timestamp?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>

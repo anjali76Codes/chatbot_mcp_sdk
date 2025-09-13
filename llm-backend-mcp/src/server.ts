@@ -75,11 +75,48 @@ app.post('/v1/chat', async (req, res) => {
   }
 });
 
+
+// Add this to your server.ts
+app.post('/v1/chat/stream', async (req, res) => {
+  try {
+    const { message } = req.body;
+    
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    // Use LangChain streaming
+    const stream = await chatAgent.sendMessageStream(message, []);
+    
+    for await (const chunk of stream) {
+      res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+    }
+    
+    res.write('data: [DONE]\n\n');
+    res.end();
+
+  } catch (error) {
+    console.error('Stream error:', error);
+    res.status(500).end();
+  }
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     chatAgentInitialized: !!chatAgent,
+    endpoints: {
+      chat: '/v1/chat',
+      chatStream: '/v1/chat/stream',
+      health: '/health',
+      clearCache: '/v1/clear-cache'
+    },
     timestamp: new Date().toISOString()
   });
 });

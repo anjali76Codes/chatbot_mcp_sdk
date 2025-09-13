@@ -97,7 +97,7 @@ export class AutoContentMapper {
           const entriesResponse = await this.mcpClient.callTool('get_all_entries', {
             content_type_uid: contentType,
             environment: 'production',
-            limit: 50, // Reduced limit for safety
+            limit: 20, // Reduced limit for safety
             skip: 0,
             locale: 'en-us'
           });

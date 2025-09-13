@@ -40,7 +40,11 @@ async function main(): Promise<void> {
     await chatAgent.initialize();
     
     console.log('💬 Chat Agent is ready! Type your questions below.');
-    console.log('Type "exit", "quit", or press Ctrl+C to end the conversation.\n');
+    console.log('Type "exit", "quit", or press Ctrl+C to end the conversation.');
+    console.log('Type "stream" to enable streaming mode.');
+    console.log('Type "normal" to disable streaming mode.\n');
+
+    let streamingMode = false;
 
     while (true) {
       const userInput = await rl.question('👤 You: ');
@@ -52,27 +56,56 @@ async function main(): Promise<void> {
 
       if (cleaned === 'clear') {
         chatAgent.clearConversationHistory();
+        history.length = 0; // Clear local history too
         console.log('🗑️ Conversation history cleared\n');
+        continue;
+      }
+
+      if (cleaned === 'stream') {
+        streamingMode = true;
+        console.log('🔵 Streaming mode enabled\n');
+        continue;
+      }
+
+      if (cleaned === 'normal') {
+        streamingMode = false;
+        console.log('⚪ Streaming mode disabled\n');
         continue;
       }
 
       console.log('🤖 Thinking...');
       const startTime = Date.now();
 
-      // 🚀 LET THE CHAT AGENT HANDLE EVERYTHING AUTOMATICALLY
-      const response = await chatAgent.sendMessage(userInput, history);
-
-      // 🚀 UPDATE HISTORY EFFICIENTLY
-      history.push({ role: 'user', content: userInput });
-      history.push({ role: 'assistant', content: response });
+      if (streamingMode) {
+        // 🚀 STREAMING MODE - Use the AsyncGenerator version
+        console.log('\n🤖 Assistant: ');
+        
+        let fullResponse = '';
+        const stream = chatAgent.sendMessageStream(userInput, history);
+        
+        for await (const chunk of stream) {
+          process.stdout.write(chunk);
+          fullResponse += chunk;
+        }
+        
+        console.log('\n');
+        history.push({ role: 'user', content: userInput });
+        history.push({ role: 'assistant', content: fullResponse });
+        
+      } else {
+        // 🚀 REGULAR MODE (existing behavior)
+        const response = await chatAgent.sendMessage(userInput, history);
+        console.log(`\n🤖 Assistant: ${response}\n`);
+        history.push({ role: 'user', content: userInput });
+        history.push({ role: 'assistant', content: response });
+      }
       
       // Keep history manageable
       if (history.length > 10) {
         history.splice(0, history.length - 10);
       }
 
-      console.log(`⚡ Response time: ${Date.now() - startTime}ms`);
-      console.log(`\n🤖 Assistant: ${response}\n`);
+      console.log(`⚡ Response time: ${Date.now() - startTime}ms\n`);
     }
 
   } catch (error) {
