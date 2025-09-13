@@ -4,5 +4,5 @@ export interface Policy {
   title: string;
   policy_type: string;
   details: string;
-  effective_date?: string;
+  // effective_date?: string;
 }

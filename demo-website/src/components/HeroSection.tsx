@@ -19,7 +19,7 @@ export const HeroSection = () => {
       </video>
 
       {/* Overlay to darken the video */}
-      <div className="absolute inset-0 bg-black opacity-30"></div>
+      <div className="absolute inset-0 bg-black opacity-10"></div>
 
       {/* Content */}
       <div className="relative z-10 max-w-2xl text-center text-white px-4">

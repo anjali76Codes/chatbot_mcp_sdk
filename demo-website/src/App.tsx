@@ -17,7 +17,7 @@ function App() {
     llm: {
       provider: 'google' as const,
       apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
-      model: 'gemini-2.5-pro',
+      model: 'gemini-2.5-flash',
     },
   }
 

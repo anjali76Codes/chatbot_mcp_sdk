@@ -67,11 +67,8 @@ export const ProductCard = ({ product }: ProductCardProps) => {
           View Details
         </button>
 
-        {/* Additional Info */}
-        <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
-          <span>⭐ 4.8 (24 reviews)</span>
-          <span>🚚 Free shipping</span>
-        </div>
+      
+      
       </div>
     </div>
   );

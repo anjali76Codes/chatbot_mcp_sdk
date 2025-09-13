@@ -109,7 +109,7 @@ export const PoliciesSection = () => {
     <section id="policies" className="py-20 bg-amber-50">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
-          <h2 className="text-5xl font-bold text-amber-900 mb-6 border-b-4 border-amber-400 pb-4">
+          <h2 className="text-5xl font-bold text-amber-900 mb-6">
             SHIPPING & POLICIES
           </h2>
           <p className="text-amber-700 text-xl font-semibold">
@@ -141,23 +141,16 @@ export const PoliciesSection = () => {
               className="bg-white rounded-3xl shadow-2xl border-4 border-amber-300 transition-all duration-300 hover:border-amber-500 hover:shadow-3xl transform hover:-translate-y-1"
             >
               <div className="p-8">
-                <div className="flex items-start justify-between mb-6">
-                  <div className="flex-1">
-                    <span className="inline-block px-5 py-3 bg-amber-200 text-amber-900 rounded-full text-base font-bold mb-4 border-2 border-amber-400">
-                      {policy.policy_type.toUpperCase()}
-                    </span>
-                    <h3 className="text-2xl font-bold text-amber-900 mb-4 border-b-2 border-amber-200 pb-3">
-                      {policy.title}
-                    </h3>
-                  </div>
-                  {policy.effective_date && (
-                    <span className="text-sm font-bold text-amber-700 bg-amber-100 px-4 py-3 rounded-xl border-2 border-amber-300 whitespace-nowrap ml-6">
-                      📅 EFFECTIVE: {new Date(policy.effective_date).toLocaleDateString()}
-                    </span>
-                  )}
+                <div className="mb-6">
+                  <span className="inline-block px-5 py-3 bg-amber-200 text-amber-900 rounded-full text-base font-bold mb-4 border-2 border-amber-400">
+                    {policy.policy_type.toUpperCase()}
+                  </span>
+                  <h3 className="text-2xl font-bold text-amber-900 mb-4">
+                    {policy.title}
+                  </h3>
                 </div>
                 
-                <div className="border-t-2 border-amber-200 pt-6">
+                <div className="pt-6">
                   <div className="text-gray-800 text-lg leading-relaxed font-medium">
                     {extractTextFromContent(policy.details)}
                   </div>
