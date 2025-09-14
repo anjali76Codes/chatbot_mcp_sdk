@@ -48,6 +48,7 @@ export class ContentstackMCPClient {
     const apiKey = config.apiKey || process.env.CONTENTSTACK_API_KEY;
     const managementToken = config.managementToken || process.env.CONTENTSTACK_MANAGEMENT_TOKEN;
     const environment = config.environment || process.env.CONTENTSTACK_ENVIRONMENT;
+    const region = config.region || process.env.CONTENTSTACK_REGION || 'eu';
 
     if (!apiKey || !managementToken) {
       throw new Error('Contentstack API Key or Management Token not found');
@@ -56,16 +57,22 @@ export class ContentstackMCPClient {
     const serverCommand = 'npx';
     const serverArgs = [
       '-y',
-      '@contentstack/mcp'
+      '@contentstack/mcp',
+      '--management-token',
+      '--api-key', apiKey,
+      '--token', managementToken,
+      '--environment', environment || 'production',
+      '--region', region
     ];
+
+    console.log('🚀 Initializing MCP client with management token...');
 
     const env: Record<string, string> = {
       CONTENTSTACK_API_KEY: apiKey,
       CONTENTSTACK_MANAGEMENT_TOKEN: managementToken,
-      CONTENTSTACK_ENVIRONMENT: environment || 'production'
+      CONTENTSTACK_ENVIRONMENT: environment || 'production',
+      CONTENTSTACK_REGION: region
     };
-
-    console.log('🚀 Initializing MCP client...');
 
     this.transport = new StdioClientTransport({
       command: serverCommand,
