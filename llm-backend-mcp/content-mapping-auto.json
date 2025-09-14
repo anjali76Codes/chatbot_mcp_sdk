@@ -1,5 +1,16 @@
 {
   "products": {
+    "international-shipping": {
+      "entry_uid": "blt7441c233a31c201c",
+      "content_type": "shipping_policies",
+      "response_template": "The {title} is priced at {price}.",
+      "fields": {
+        "title": "International Shipping",
+        "price": "Price not available",
+        "description": "",
+        "image": ""
+      }
+    },
     "return-process": {
       "entry_uid": "blt4086b810e4f15853",
       "content_type": "shipping_policies",
@@ -319,17 +330,6 @@
         "image": ""
       }
     },
-    "international-shipping": {
-      "entry_uid": "blt2c5dd2cfad821005",
-      "content_type": "faqs",
-      "response_template": "The {title} is priced at {price}.",
-      "fields": {
-        "title": "International Shipping",
-        "price": "Price not available",
-        "description": "",
-        "image": ""
-      }
-    },
     "materials-quality": {
       "entry_uid": "blt5fd6257f3823a833",
       "content_type": "faqs",
@@ -409,6 +409,11 @@
     }
   },
   "search_aliases": {
+    "international-shipping": [
+      "international shipping",
+      "international",
+      "shipping"
+    ],
     "return-process": [
       "return process",
       "return",
@@ -598,11 +603,6 @@
       "shipping",
       "time"
     ],
-    "international-shipping": [
-      "international shipping",
-      "international",
-      "shipping"
-    ],
     "materials-quality": [
       "materials quality",
       "materials",
@@ -641,5 +641,5 @@
       "services"
     ]
   },
-  "last_updated": "2025-09-13T18:04:15.977Z"
+  "last_updated": "2025-09-14T05:48:17.590Z"
 }
