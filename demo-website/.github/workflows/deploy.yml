@@ -1,0 +1,46 @@
+name: Deploy to Contentstack Launch
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        cd demo-website
+        npm ci
+
+    - name: Build project
+      run: |
+        cd demo-website
+        npm run build
+      env:
+        VITE_CONTENTSTACK_API_KEY: ${{ secrets.CONTENTSTACK_API_KEY }}
+        VITE_CONTENTSTACK_DELIVERY_TOKEN: ${{ secrets.CONTENTSTACK_DELIVERY_TOKEN }}
+        VITE_CONTENTSTACK_ENVIRONMENT: ${{ secrets.CONTENTSTACK_ENVIRONMENT }}
+
+    - name: Install Contentstack CLI
+      run: npm install -g @contentstack/cli
+
+    - name: Login to Contentstack (SECURE)
+      run: |
+        csdx auth:login --username "${{ secrets.CONTENTSTACK_EMAIL }}" --password "${{ secrets.CONTENTSTACK_PASSWORD }}"
+
+    - name: Deploy to Launch
+      run: |
+        cd demo-website
+        csdx launch --type GitHub --framework Other --build-command "npm run build" --out-dir "dist" --branch ${{ github.ref_name }} --env-variables "VITE_CONTENTSTACK_API_KEY:${{ secrets.CONTENTSTACK_API_KEY }},VITE_CONTENTSTACK_DELIVERY_TOKEN:${{ secrets.CONTENTSTACK_DELIVERY_TOKEN }},VITE_CONTENTSTACK_ENVIRONMENT:${{ secrets.CONTENTSTACK_ENVIRONMENT }}"
