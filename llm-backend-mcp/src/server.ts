@@ -10,6 +10,12 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// src/server.ts or wherever dotenv is imported
+if (process.env.NODE_ENV !== "production") {
+  import("dotenv").then(dotenv => dotenv.config());
+}
+
+
 // Initialize chat agent instance
 let chatAgent: ContentstackChatAgent;
 
