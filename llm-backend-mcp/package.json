@@ -2,13 +2,13 @@
   "name": "contentstack-chat-agent-platform",
   "version": "1.0.0",
   "description": "A plug-and-play platform for developers to create custom chat agents powered by LLMs and Contentstack",
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
-    "dev:index": "tsx src/index.ts",
+    "dev:cli": "tsx src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
