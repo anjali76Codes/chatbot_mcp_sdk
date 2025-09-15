@@ -205,12 +205,12 @@ export class ContentstackChatAgent {
     return true;
   }
 
-  private buildGeneralContext(history: ChatMessage[]): string {
+private buildGeneralContext(history: ChatMessage[]): string {
     const lastFewMessages = history.slice(-3);
     
     const historyContext = lastFewMessages
-      .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
-      .join('\n');
+        .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
+        .join('\n');
 
     return `
 You are a friendly and helpful AI assistant. Keep responses brief and conversational.
@@ -223,42 +223,71 @@ INSTRUCTIONS:
 2. Keep responses under 2 sentences
 3. Be friendly and engaging
 4. If asked about your capabilities, mention you can help find information
-5. NEVER use markdown formatting
+5. NEVER use markdown formatting (no **bold**, *italic*, bullet points with *)
 6. Always respond with plain, clean text only
 7. Response must be under 50 words
 8. Don't mention that you can't help with content if it's a general conversation
+9. Use Indian currency format (₹ instead of $) if mentioning prices
 
 YOUR RESPONSE:`.trim();
-  }
+}
 
-  private cleanResponse(response: any): string {
+private cleanResponse(response: any): string {
     let content: string;
     if (typeof response === 'string') {
-      content = response;
+        content = response;
     } else if (response && typeof response.content === 'string') {
-      content = response.content;
+        content = response.content;
     } else if (Array.isArray(response)) {
-      content = response
-        .map(item => {
-          if (typeof item === 'string') return item;
-          if (item && typeof item.text === 'string') return item.text;
-          return '';
-        })
-        .filter(text => text.length > 0)
-        .join(' ');
+        content = response
+            .map(item => {
+                if (typeof item === 'string') return item;
+                if (item && typeof item.text === 'string') return item.text;
+                return '';
+            })
+            .filter(text => text.length > 0)
+            .join(' ');
     } else {
-      content = String(response);
+        content = String(response);
     }
 
-    return content
-      .replace(/\*\*(.*?)\*\*/g, '$1')
-      .replace(/\*(.*?)\*/g, '$1')
-      .replace(/_(.*?)_/g, '$1')
-      .replace(/`(.*?)`/g, '$1')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-  }
+    // Clean markdown formatting
+    let cleanedContent = content
+        .replace(/\*\*(.*?)\*\*/g, '$1')          // Remove bold **text**
+        .replace(/\*(.*?)\*/g, '$1')              // Remove italic *text*
+        .replace(/_(.*?)_/g, '$1')                // Remove underline _text_
+        .replace(/`(.*?)`/g, '$1')                // Remove code `text`
+        .replace(/#{1,6}\s?/g, '')               // Remove headers # text
+        .replace(/\n{3,}/g, '\n\n')              // Reduce multiple newlines
+        .trim();
 
+    // Convert dollar signs to Indian Rupees symbol
+    cleanedContent = cleanedContent
+        .replace(/\$(\d+(?:\.\d{2})?)/g, '₹$1')  // Replace $79.99 with ₹79.99
+        .replace(/\$(\d+)/g, '₹$1')              // Replace $79 with ₹79
+        .replace(/USD\s*(\d+(?:\.\d{2})?)/gi, '₹$1') // Replace USD 79.99 with ₹79.99
+        .replace(/dollars/gi, 'rupees')          // Replace dollars with rupees
+        .replace(/\$/, '₹');                     // Replace any remaining $ with ₹
+
+    // Format bullet points properly
+    cleanedContent = cleanedContent
+        .replace(/\*\s+/g, '• ')                 // Replace * with bullet •
+        .replace(/-\s+/g, '• ')                  // Replace - with bullet •
+        .replace(/(\d+)\.\s+/g, '$1. ')          // Clean numbered lists
+        .replace(/(•\s+){2,}/g, '• ');           // Remove duplicate bullets
+
+    // Ensure proper spacing and formatting
+    cleanedContent = cleanedContent
+        .replace(/\s+\./g, '.')                  // Remove spaces before dots
+        .replace(/\s+,/g, ',')                   // Remove spaces before commas
+        .replace(/\s+:/g, ':')                   // Remove spaces before colons
+        .replace(/\s+;/g, ';')                   // Remove spaces before semicolons
+        .replace(/([.!?])([A-Z])/g, '$1 $2')     // Add space after sentence endings
+        .replace(/\s+/g, ' ')                    // Normalize multiple spaces
+        .trim();
+
+    return cleanedContent;
+}
   async sendMessage(userMessage: string, history: ChatMessage[] = []): Promise<string> {
     const startTime = Date.now();
     
@@ -505,13 +534,13 @@ YOUR RESPONSE:`.trim();
     }
   }
 
-  private buildConversationContext(contentstackData: string, queryType?: string, history: ChatMessage[] = []): string {
+private buildConversationContext(contentstackData: string, queryType?: string, history: ChatMessage[] = []): string {
     const effectiveHistory = history.length > 0 ? history : this.conversationHistory;
     
     const historyContext = effectiveHistory
-      .slice(-3)
-      .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
-      .join('\n');
+        .slice(-3)
+        .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
+        .join('\n');
 
     return `
 You are a helpful AI assistant. Answer the user's question based on the content provided.
@@ -530,11 +559,14 @@ INSTRUCTIONS:
 3. If you don't know the answer, say so
 4. Keep responses concise but informative (under 100 words)
 5. Maintain the conversation context
-6. NEVER use markdown formatting
+6. NEVER use markdown formatting (no **bold**, *italic*, bullet points with *)
 7. Always respond with plain, clean text only
+8. Use Indian currency format (₹ instead of $)
+9. For lists, use simple line breaks instead of bullet points
+10. Prices should be in Indian Rupees format (₹ symbol)
 
 YOUR RESPONSE:`.trim();
-  }
+}
 
   getConversationHistory(): ChatMessage[] {
     return [...this.conversationHistory];

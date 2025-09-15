@@ -112,6 +112,44 @@ app.post('/v1/chat/stream', async (req, res) => {
   }
 });
 
+
+// Add this endpoint to your server.ts file
+app.get('/v1/config', (req, res) => {
+  try {
+    const config = {
+      contentstack: {
+        apiKey: process.env.CONTENTSTACK_API_KEY,
+        deliveryToken: process.env.CONTENTSTACK_DELIVERY_TOKEN,
+        environment: process.env.CONTENTSTACK_ENVIRONMENT,
+        region: process.env.CONTENTSTACK_REGION || 'eu'
+      },
+      llm: {
+        provider: process.env.LLM_PROVIDER || 'google',
+        apiKey: process.env.LLM_API_KEY,
+        model: process.env.LLM_MODEL || 'gemini-2.5-flash',
+        temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.7')
+      }
+    };
+
+    // Validate required configuration
+    if (!config.contentstack.apiKey || !config.contentstack.deliveryToken || !config.contentstack.environment) {
+      throw new Error('Contentstack configuration is incomplete');
+    }
+
+    if (!config.llm.apiKey) {
+      throw new Error('LLM API key is required');
+    }
+
+    res.json(config);
+  } catch (error) {
+    console.error('❌ Error in /config endpoint:', error);
+    res.status(500).json({ 
+      error: 'Failed to load configuration',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 

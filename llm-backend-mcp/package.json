@@ -4,13 +4,17 @@
   "description": "A plug-and-play platform for developers to create custom chat agents powered by LLMs and Contentstack",
   "main": "dist/server.js",
   "type": "module",
+  
   "scripts": {
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/server.js",  
     "dev": "tsx src/server.ts",
     "dev:cli": "tsx src/index.ts",
+    "mcp:auth": "npx @contentstack/mcp --auth",  
+    "mcp:start": "npx @contentstack/mcp --port 3001", 
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+
   "keywords": [
     "contentstack",
     "chatbot",
@@ -31,12 +35,14 @@
     "express": "^4.21.2",
     "natural": "^8.1.0",
     "node-cache": "^5.1.2",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "string-similarity": "^4.0.4"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^20.16.15",
+    "@types/string-similarity": "^4.0.2",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3"
   }
