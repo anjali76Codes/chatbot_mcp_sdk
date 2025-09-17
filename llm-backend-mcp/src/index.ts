@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const chatAgent = new ContentstackChatAgent({
     contentstack: {
       apiKey: process.env.CONTENTSTACK_API_KEY,
-      deliveryToken: process.env.CONTENTSTACK_MANAGEMENT_TOKEN,
+      managementToken: process.env.CONTENTSTACK_MANAGEMENT_TOKEN,
       environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
       region: process.env.CONTENTSTACK_REGION || 'us'
     },
