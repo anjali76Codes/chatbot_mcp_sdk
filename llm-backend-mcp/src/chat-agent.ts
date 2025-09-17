@@ -15,7 +15,7 @@ export interface ChatMessage {
 export interface ChatAgentConfig {
   contentstack?: {
     apiKey?: string;
-    deliveryToken?: string;
+    managementToken?: string; // ✅ added
     environment?: string;
     region?: string;
   };
@@ -89,14 +89,15 @@ export class ContentstackChatAgent {
       temperature: llmTemperature,
     });
 
-    if (config.contentstack?.apiKey) {
-      this.mcpClient = new ContentstackMCPClient({
-        apiKey: config.contentstack.apiKey,
-        managementToken: config.contentstack.deliveryToken,
-        environment: config.contentstack.environment,
-        region: config.contentstack.region
-      });
-    }
+   if (config.contentstack?.apiKey && config.contentstack?.managementToken) {
+  this.mcpClient = new ContentstackMCPClient({
+    apiKey: config.contentstack.apiKey,
+    managementToken: config.contentstack.managementToken, // ✅ correct now
+    environment: config.contentstack.environment,
+    region: config.contentstack.region
+  });
+}
+
   }
 
   async initialize(): Promise<void> {

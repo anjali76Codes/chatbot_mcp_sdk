@@ -10,11 +10,10 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// src/server.ts or wherever dotenv is imported
-if (process.env.NODE_ENV !== "production") {
-  import("dotenv").then(dotenv => dotenv.config());
+// dotenv
+if (process.env.NODE_ENV !== 'production') {
+  import('dotenv').then(dotenv => dotenv.config());
 }
-
 
 // Initialize chat agent instance
 let chatAgent: ContentstackChatAgent;
@@ -25,18 +24,19 @@ const initializeServer = async () => {
     chatAgent = new ContentstackChatAgent({
       contentstack: {
         apiKey: process.env.CONTENTSTACK_API_KEY,
-        deliveryToken: process.env.CONTENTSTACK_DELIVERY_TOKEN,
+        managementToken: process.env.CONTENTSTACK_MANAGEMENT_TOKEN, // ✅ mgmt token
         environment: process.env.CONTENTSTACK_ENVIRONMENT,
-        region: 'eu'
+        region: process.env.CONTENTSTACK_REGION || 'eu'
       },
-      llm: {
-        provider: 'google',
-        apiKey: process.env.GOOGLE_API_KEY,
-        model: 'gemini-2.5-flash',
-        temperature: 0.7
-      }
+     llm: {
+  provider: (process.env.LLM_PROVIDER as "google" | "openai" | "anthropic" | "groq") || "google",
+  apiKey: process.env.LLM_API_KEY || process.env.GOOGLE_API_KEY || "",
+  model: process.env.LLM_MODEL || "gemini-2.5-flash",
+  temperature: parseFloat(process.env.LLM_TEMPERATURE || "0.7")
+}
+
     });
-    
+
     await chatAgent.initialize();
     console.log('✅ Chat Agent initialized successfully with configuration');
   } catch (error) {
@@ -45,7 +45,7 @@ const initializeServer = async () => {
   }
 };
 
-// SIMPLIFIED chat endpoint - no conversation history, no session management
+// Chat endpoint (non-streaming)
 app.post('/v1/chat', async (req, res) => {
   try {
     const { message } = req.body;
@@ -57,36 +57,28 @@ app.post('/v1/chat', async (req, res) => {
     console.log(`📨 Received message: ${message}`);
 
     const startTime = Date.now();
-    
-    // Use the globally initialized chat agent
-    // Pass empty history to mimic CLI behavior
-    const response = await chatAgent.sendMessage(message, []);
-
+    const response = await chatAgent.sendMessage(message, []); // empty history
     const responseTime = Date.now() - startTime;
-    console.log(`⚡ Response time: ${responseTime}ms`);
 
-    // Send the response back - simplified response without conversation ID
-    res.json({ 
+    res.json({
       response,
       timestamp: new Date().toISOString(),
       responseTime
     });
-
   } catch (error) {
     console.error('❌ Error in /chat endpoint:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
 
-
-// Add this to your server.ts
+// Chat endpoint (streaming)
 app.post('/v1/chat/stream', async (req, res) => {
   try {
     const { message } = req.body;
-    
+
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
@@ -96,46 +88,41 @@ app.post('/v1/chat/stream', async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    // Use LangChain streaming
     const stream = await chatAgent.sendMessageStream(message, []);
-    
+
     for await (const chunk of stream) {
       res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
     }
-    
+
     res.write('data: [DONE]\n\n');
     res.end();
-
   } catch (error) {
     console.error('Stream error:', error);
     res.status(500).end();
   }
 });
 
-
-// Add this endpoint to your server.ts file
+// Config endpoint
 app.get('/v1/config', (req, res) => {
   try {
     const config = {
       contentstack: {
         apiKey: process.env.CONTENTSTACK_API_KEY,
-        deliveryToken: process.env.CONTENTSTACK_DELIVERY_TOKEN,
+        managementToken: process.env.CONTENTSTACK_MANAGEMENT_TOKEN, // ✅ mgmt token
         environment: process.env.CONTENTSTACK_ENVIRONMENT,
         region: process.env.CONTENTSTACK_REGION || 'eu'
       },
       llm: {
         provider: process.env.LLM_PROVIDER || 'google',
-        apiKey: process.env.LLM_API_KEY,
+        apiKey: process.env.LLM_API_KEY || process.env.GOOGLE_API_KEY,
         model: process.env.LLM_MODEL || 'gemini-2.5-flash',
         temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.7')
       }
     };
 
-    // Validate required configuration
-    if (!config.contentstack.apiKey || !config.contentstack.deliveryToken || !config.contentstack.environment) {
+    if (!config.contentstack.apiKey || !config.contentstack.managementToken || !config.contentstack.environment) {
       throw new Error('Contentstack configuration is incomplete');
     }
-
     if (!config.llm.apiKey) {
       throw new Error('LLM API key is required');
     }
@@ -143,17 +130,17 @@ app.get('/v1/config', (req, res) => {
     res.json(config);
   } catch (error) {
     console.error('❌ Error in /config endpoint:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to load configuration',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
 
-// Health check endpoint
+// Health check
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     chatAgentInitialized: !!chatAgent,
     endpoints: {
       chat: '/v1/chat',
@@ -165,7 +152,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Clear cache endpoint (optional)
+// Clear cache
 app.post('/v1/clear-cache', (req, res) => {
   if (chatAgent) {
     chatAgent.clearConversationHistory();
@@ -174,7 +161,7 @@ app.post('/v1/clear-cache', (req, res) => {
   res.json({ status: 'Cache cleared' });
 });
 
-// Initialize and start the server
+// Start server
 initializeServer().then(() => {
   app.listen(port, () => {
     console.log(`🚀 Model API server running on http://localhost:${port}`);
