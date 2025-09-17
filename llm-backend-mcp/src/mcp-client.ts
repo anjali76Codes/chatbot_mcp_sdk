@@ -51,26 +51,25 @@ export class ContentstackMCPClient {
     const region = config.region || process.env.CONTENTSTACK_REGION || 'eu';
 
     if (!apiKey || !managementToken) {
-      throw new Error('Contentstack API Key or Management Token not found');
+      throw new Error('❌ Contentstack API Key and Management Token are required');
     }
 
     const serverCommand = 'npx';
-   const serverArgs = [
-  '-y',
-  '@contentstack/mcp',
-  '--api-key', apiKey,
-  '--management-token', managementToken,
-  '--environment', environment || 'production',
-  '--region', region
-];
+    const serverArgs = [
+      '-y',
+      '@contentstack/mcp',
+      '--api-key', apiKey,
+      '--management-token', managementToken,
+      '--environment', environment || 'production',
+      '--region', region
+    ];
 
     console.log('🚀 Initializing MCP client with management token...');
+    console.log('   spawn args:', serverArgs);
 
+    // ✅ Important: pass minimal env to avoid OAuth confusion
     const env: Record<string, string> = {
-      CONTENTSTACK_API_KEY: apiKey,
-      CONTENTSTACK_MANAGEMENT_TOKEN: managementToken,
-      CONTENTSTACK_ENVIRONMENT: environment || 'production',
-      CONTENTSTACK_REGION: region
+      PATH: process.env.PATH || ''
     };
 
     this.transport = new StdioClientTransport({
@@ -93,14 +92,8 @@ export class ContentstackMCPClient {
   }
 
   async connect(): Promise<void> {
-    if (this.isConnected) {
-      return;
-    }
-
-    // 🚀 PREVENT MULTIPLE CONNECTION ATTEMPTS
-    if (this.connectionPromise) {
-      return this.connectionPromise;
-    }
+    if (this.isConnected) return;
+    if (this.connectionPromise) return this.connectionPromise;
 
     this.connectionPromise = (async () => {
       try {
@@ -110,7 +103,6 @@ export class ContentstackMCPClient {
         console.log('✅ MCP Client connected successfully');
         
         await this.discoverTools();
-        
       } catch (error) {
         console.error('❌ Failed to connect to MCP server:', error);
         this.connectionPromise = null;
@@ -210,12 +202,12 @@ export class ContentstackMCPClient {
         content_type_uid: contentType,
         environment: this.config.environment || process.env.CONTENTSTACK_ENVIRONMENT || 'production',
         query: query,
-        limit: 20, // Reduced from 20 to 10
+        limit: 20,
         skip: 0,
         locale: 'en-us'
       };
 
-      return await this.callTool('get_all_entries', searchParams, 5000); // Reduced timeout
+      return await this.callTool('get_all_entries', searchParams, 5000);
       
     } catch (error) {
       console.error('❌ Search error:', error);
@@ -237,7 +229,7 @@ export class ContentstackMCPClient {
   }
 }
 
-// Export singleton instance
+// ✅ Export singleton instance
 export const getMCPClient = (config: MCPClientConfig): ContentstackMCPClient => {
   return MCPConnectionPool.getInstance(config);
 };
