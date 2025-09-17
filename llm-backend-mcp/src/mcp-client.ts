@@ -55,15 +55,15 @@ export class ContentstackMCPClient {
     }
 
     const serverCommand = 'npx';
-    const serverArgs = [
-      '-y',
-      '@contentstack/mcp',
-      '--management-token',
-      '--api-key', apiKey,
-      '--token', managementToken,
-      '--environment', environment || 'production',
-      '--region', region
-    ];
+  const serverArgs = [
+  '-y',
+  '@contentstack/mcp',
+  '--api-key', apiKey,
+  '--management-token', managementToken,
+  '--environment', environment || 'production',
+  '--region', region
+];
+
 
     console.log('🚀 Initializing MCP client with management token...');
 
