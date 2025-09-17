@@ -12,18 +12,20 @@ export interface MCPClientConfig {
   region?: string;
 }
 
-// 🚀 CONNECTION POOL
+// 🚀 CONNECTION POOL FOR REUSE
 class MCPConnectionPool {
   private static instances: Map<string, ContentstackMCPClient> = new Map();
-
+  
   static getInstance(config: MCPClientConfig): ContentstackMCPClient {
     const key = `${config.apiKey}:${config.environment}`;
+    
     if (!this.instances.has(key)) {
       this.instances.set(key, new ContentstackMCPClient(config));
     }
+    
     return this.instances.get(key)!;
   }
-
+  
   static async cleanup(): Promise<void> {
     for (const instance of this.instances.values()) {
       await instance.disconnect();
@@ -42,48 +44,38 @@ export class ContentstackMCPClient {
 
   constructor(config: MCPClientConfig = {}) {
     this.config = config;
-
+    
     const apiKey = config.apiKey || process.env.CONTENTSTACK_API_KEY;
-    const managementToken =
-      config.managementToken || process.env.CONTENTSTACK_MANAGEMENT_TOKEN;
-    const environment =
-      config.environment || process.env.CONTENTSTACK_ENVIRONMENT;
-    const region = config.region || process.env.CONTENTSTACK_REGION || 'us';
+    const managementToken = config.managementToken || process.env.CONTENTSTACK_MANAGEMENT_TOKEN;
+    const environment = config.environment || process.env.CONTENTSTACK_ENVIRONMENT;
+    const region = config.region || process.env.CONTENTSTACK_REGION || 'eu';
 
     if (!apiKey || !managementToken) {
-      throw new Error('Contentstack API Key or Management Token not found');
+      throw new Error('❌ Contentstack API Key and Management Token are required');
     }
 
     const serverCommand = 'npx';
     const serverArgs = [
       '-y',
       '@contentstack/mcp',
-      '--api-key',
-      apiKey,
-      '--management-token',
-      managementToken,
-      '--environment',
-      environment || 'production',
-      '--region',
-      region,
+      '--api-key', apiKey,
+      '--management-token', managementToken,
+      '--environment', environment || 'production',
+      '--region', region
     ];
 
     console.log('🚀 Initializing MCP client with management token...');
     console.log('   spawn args:', serverArgs);
 
-    // ✅ Forward full environment
+    // ✅ Important: pass minimal env to avoid OAuth confusion
     const env: Record<string, string> = {
-      ...process.env,
-      CONTENTSTACK_API_KEY: apiKey,
-      CONTENTSTACK_MANAGEMENT_TOKEN: managementToken,
-      CONTENTSTACK_ENVIRONMENT: environment || 'production',
-      CONTENTSTACK_REGION: region,
+      PATH: process.env.PATH || ''
     };
 
     this.transport = new StdioClientTransport({
       command: serverCommand,
       args: serverArgs,
-      env,
+      env: env
     });
 
     this.client = new Client(
@@ -93,9 +85,9 @@ export class ContentstackMCPClient {
       },
       {
         capabilities: {
-          tools: {},
-        },
-      },
+          tools: {}
+        }
+      }
     );
   }
 
@@ -109,15 +101,12 @@ export class ContentstackMCPClient {
         await this.client.connect(this.transport);
         this.isConnected = true;
         console.log('✅ MCP Client connected successfully');
+        
         await this.discoverTools();
       } catch (error) {
         console.error('❌ Failed to connect to MCP server:', error);
         this.connectionPromise = null;
-        throw new Error(
-          `MCP connection failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
+        throw new Error(`MCP connection failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     })();
 
@@ -127,7 +116,7 @@ export class ContentstackMCPClient {
   async discoverTools(): Promise<void> {
     try {
       const toolsResponse = await this.client.listTools();
-      this.availableTools = toolsResponse.tools.map((t: any) => t.name);
+      this.availableTools = toolsResponse.tools.map((tool: any) => tool.name);
       console.log('🛠️ Available MCP Tools:', this.availableTools);
     } catch (error) {
       console.error('❌ Failed to discover tools:', error);
@@ -135,48 +124,42 @@ export class ContentstackMCPClient {
     }
   }
 
-  async callTool(
-    toolName: string,
-    parameters: any,
-    timeoutMs: number = 5000,
-  ): Promise<string> {
-    if (!this.isConnected) await this.connect();
+  async callTool(toolName: string, parameters: any, timeoutMs: number = 5000): Promise<string> {
+    if (!this.isConnected) {
+      await this.connect();
+    }
 
     try {
       if (!this.availableTools.includes(toolName)) {
-        throw new Error(
-          `Tool '${toolName}' not available. Available tools: ${this.availableTools.join(', ')}`,
-        );
+        throw new Error(`Tool '${toolName}' not available. Available tools: ${this.availableTools.join(', ')}`);
       }
 
-      console.log(
-        `🛠️ Calling tool: ${toolName}`,
-        this.sanitizeLogParameters(parameters),
-      );
-
+      console.log(`🛠️ Calling tool: ${toolName}`, this.sanitizeLogParameters(parameters));
+      
       const result = await Promise.race([
         this.client.callTool({
           name: toolName,
           arguments: parameters,
         }),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`Tool ${toolName} timeout after ${timeoutMs}ms`)),
-            timeoutMs,
-          ),
-        ),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`Tool ${toolName} timeout after ${timeoutMs}ms`)), timeoutMs)
+        )
       ]);
 
       return this.extractResponseText(result);
+      
     } catch (error) {
       console.error(`❌ Error calling tool ${toolName}:`, error);
-
+      
       if (error instanceof Error) {
-        if (error.message.includes('not available')) throw error;
-        if (error.message.includes('timeout'))
+        if (error.message.includes('not available')) {
+          throw error;
+        }
+        if (error.message.includes('timeout')) {
           throw new Error(`Tool ${toolName} timed out after ${timeoutMs}ms`);
+        }
       }
-
+      
       throw new Error(`Failed to execute tool ${toolName}: ${error}`);
     }
   }
@@ -191,6 +174,7 @@ export class ContentstackMCPClient {
 
   private extractResponseText(result: any): string {
     if (!result) return '';
+
     if (result.content && Array.isArray(result.content)) {
       const contentText = result.content
         .map((item: any) => {
@@ -201,33 +185,30 @@ export class ContentstackMCPClient {
         })
         .filter((text: string) => text.length > 0)
         .join('\n');
-      if (contentText) return contentText;
+
+      if (contentText) {
+        return contentText;
+      }
     }
-    return typeof result === 'object'
-      ? JSON.stringify(result, null, 2)
-      : String(result);
+
+    return typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result);
   }
 
-  async searchContent(
-    query: string,
-    contentType: string = 'product',
-  ): Promise<string> {
+  async searchContent(query: string, contentType: string = 'product'): Promise<string> {
     try {
-      console.log(`🔍 Searching "${query}" in "${contentType}"`);
-
+      console.log(`🔍 Smart searching for "${query}" in "${contentType}"`);
+      
       const searchParams = {
         content_type_uid: contentType,
-        environment:
-          this.config.environment ||
-          process.env.CONTENTSTACK_ENVIRONMENT ||
-          'production',
-        query,
+        environment: this.config.environment || process.env.CONTENTSTACK_ENVIRONMENT || 'production',
+        query: query,
         limit: 20,
         skip: 0,
-        locale: 'en-us',
+        locale: 'en-us'
       };
 
       return await this.callTool('get_all_entries', searchParams, 5000);
+      
     } catch (error) {
       console.error('❌ Search error:', error);
       return 'Unable to search content at this time.';
@@ -248,7 +229,7 @@ export class ContentstackMCPClient {
   }
 }
 
-// ✅ Singleton export
+// ✅ Export singleton instance
 export const getMCPClient = (config: MCPClientConfig): ContentstackMCPClient => {
   return MCPConnectionPool.getInstance(config);
 };
