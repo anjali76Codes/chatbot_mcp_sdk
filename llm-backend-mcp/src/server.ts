@@ -18,23 +18,50 @@ if (process.env.NODE_ENV !== 'production') {
 // Initialize chat agent instance
 let chatAgent: ContentstackChatAgent;
 
+// Helper functions
+function getProviderApiKey(provider?: string): string {
+  if (!provider) return process.env.GOOGLE_API_KEY || '';
+  
+  const envVars = {
+    openai: process.env.OPENAI_API_KEY,
+    anthropic: process.env.ANTHROPIC_API_KEY,
+    groq: process.env.GROQ_API_KEY,
+    google: process.env.GOOGLE_API_KEY
+  };
+  
+  return envVars[provider as keyof typeof envVars] || '';
+}
+
+function getDefaultModel(provider: string): string {
+  const defaultModels = {
+    openai: 'gpt-4o-mini',
+    anthropic: 'claude-3-haiku-20240307',
+    groq: 'llama-3.1-8b-instant',
+    google: 'gemini-2.5-flash'
+  };
+  return defaultModels[provider as keyof typeof defaultModels] || 'gemini-2.5-flash';
+}
+
 // Async initialization function
 const initializeServer = async () => {
   try {
+    const provider = process.env.LLM_PROVIDER || 'google';
+    const apiKey = process.env.LLM_API_KEY || getProviderApiKey(provider);
+    const model = process.env.LLM_MODEL || getDefaultModel(provider);
+
     chatAgent = new ContentstackChatAgent({
       contentstack: {
         apiKey: process.env.CONTENTSTACK_API_KEY,
-        managementToken: process.env.CONTENTSTACK_MANAGEMENT_TOKEN, // ✅ mgmt token
+        managementToken: process.env.CONTENTSTACK_MANAGEMENT_TOKEN,
         environment: process.env.CONTENTSTACK_ENVIRONMENT,
         region: process.env.CONTENTSTACK_REGION || 'eu'
       },
-     llm: {
-  provider: (process.env.LLM_PROVIDER as "google" | "openai" | "anthropic" | "groq") || "google",
-  apiKey: process.env.LLM_API_KEY || process.env.GOOGLE_API_KEY || "",
-  model: process.env.LLM_MODEL || "gemini-2.5-flash",
-  temperature: parseFloat(process.env.LLM_TEMPERATURE || "0.7")
-}
-
+      llm: {
+        provider: provider as 'google' | 'openai' | 'anthropic' | 'groq',
+        apiKey: apiKey,
+        model: model,
+        temperature: parseFloat(process.env.LLM_TEMPERATURE || "0.7")
+      }
     });
 
     await chatAgent.initialize();
@@ -57,7 +84,7 @@ app.post('/v1/chat', async (req, res) => {
     console.log(`📨 Received message: ${message}`);
 
     const startTime = Date.now();
-    const response = await chatAgent.sendMessage(message, []); // empty history
+    const response = await chatAgent.sendMessage(message, []);
     const responseTime = Date.now() - startTime;
 
     res.json({
@@ -105,17 +132,24 @@ app.post('/v1/chat/stream', async (req, res) => {
 // Config endpoint
 app.get('/v1/config', (req, res) => {
   try {
+    const validProviders = ['google', 'openai', 'anthropic', 'groq'];
+    const provider = process.env.LLM_PROVIDER || 'google';
+    
+    if (!validProviders.includes(provider)) {
+      throw new Error(`Invalid LLM provider: ${provider}`);
+    }
+
     const config = {
       contentstack: {
         apiKey: process.env.CONTENTSTACK_API_KEY,
-        managementToken: process.env.CONTENTSTACK_MANAGEMENT_TOKEN, // ✅ mgmt token
+        managementToken: process.env.CONTENTSTACK_MANAGEMENT_TOKEN,
         environment: process.env.CONTENTSTACK_ENVIRONMENT,
         region: process.env.CONTENTSTACK_REGION || 'eu'
       },
       llm: {
-        provider: process.env.LLM_PROVIDER || 'google',
-        apiKey: process.env.LLM_API_KEY || process.env.GOOGLE_API_KEY,
-        model: process.env.LLM_MODEL || 'gemini-2.5-flash',
+        provider: provider as 'google' | 'openai' | 'anthropic' | 'groq',
+        apiKey: process.env.LLM_API_KEY || getProviderApiKey(provider),
+        model: process.env.LLM_MODEL || getDefaultModel(provider),
         temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.7')
       }
     };

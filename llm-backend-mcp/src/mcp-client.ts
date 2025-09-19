@@ -1,4 +1,3 @@
-// src/mcp-client.ts
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import * as dotenv from 'dotenv';
@@ -12,7 +11,6 @@ export interface MCPClientConfig {
   region?: string;
 }
 
-// 🚀 CONNECTION POOL FOR REUSE
 class MCPConnectionPool {
   private static instances: Map<string, ContentstackMCPClient> = new Map();
   
@@ -65,9 +63,8 @@ export class ContentstackMCPClient {
     ];
 
     console.log('🚀 Initializing MCP client with management token...');
-    console.log('   spawn args:', serverArgs);
+    // console.log('   spawn args:', serverArgs);
 
-    // ✅ Important: pass minimal env to avoid OAuth confusion
     const env: Record<string, string> = {
       PATH: process.env.PATH || ''
     };
@@ -117,7 +114,7 @@ export class ContentstackMCPClient {
     try {
       const toolsResponse = await this.client.listTools();
       this.availableTools = toolsResponse.tools.map((tool: any) => tool.name);
-      console.log('🛠️ Available MCP Tools:', this.availableTools);
+      // console.log('🛠️ Available MCP Tools:', this.availableTools);
     } catch (error) {
       console.error('❌ Failed to discover tools:', error);
       this.availableTools = [];
@@ -194,26 +191,127 @@ export class ContentstackMCPClient {
     return typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result);
   }
 
-  async searchContent(query: string, contentType: string = 'product'): Promise<string> {
+// In mcp-client.ts
+async searchContent(query: string, contentType: string, limit: number = 20): Promise<string> {
     try {
-      console.log(`🔍 Smart searching for "${query}" in "${contentType}"`);
-      
-      const searchParams = {
-        content_type_uid: contentType,
-        environment: this.config.environment || process.env.CONTENTSTACK_ENVIRONMENT || 'production',
-        query: query,
-        limit: 20,
-        skip: 0,
-        locale: 'en-us'
-      };
+        const params: any = {
+            content_type_uid: contentType,
+            environment: this.config.environment || 'production',
+            query: query,
+            limit: limit, // Use the limit parameter
+            skip: 0,
+            locale: 'en-us'
+        };
 
-      return await this.callTool('get_all_entries', searchParams, 5000);
-      
+        const response = await this.callTool('get_all_entries', params);
+        return response;
     } catch (error) {
-      console.error('❌ Search error:', error);
-      return 'Unable to search content at this time.';
+        console.error(`❌ Error searching content in ${contentType}:`, error);
+        return `Unable to search content in ${contentType}`;
     }
-  }
+}
+
+
+
+// Add these methods to your existing MCP client
+async smartSearchContent(query: string, contentType: string, providerType: string = 'google'): Promise<string> {
+    const isGroq = providerType.toLowerCase().includes('groq');
+    
+    if (!isGroq) {
+        // For non-GROQ providers, use comprehensive search
+        return await this.searchContent(query, contentType, 20);
+    }
+    
+    // GROQ: Optimized multi-step search to conserve tokens
+    console.log('🔍 Using GROQ-optimized search strategy');
+    
+    const searchSteps = this.getSearchStrategyForGroq(query);
+    
+    for (const step of searchSteps) {
+        try {
+            console.log(`🔄 GROQ Step: "${step.query}" with limit ${step.limit}`);
+            const result = await this.searchContent(step.query, contentType, step.limit);
+            
+            if (this.isValidSearchResult(result, query)) {
+                console.log(`✅ GROQ found results in step ${step.step}`);
+                return result;
+            }
+            
+            // If we got results but they're not relevant, continue to next step
+            if (!result.includes('Unable to') && !result.includes('No content')) {
+                console.log(`⚠️ GROQ results not relevant, trying next step`);
+            }
+            
+        } catch (error: any) {
+            if (this.isTokenLimitError(error)) {
+                console.log('⚠️ GROQ token limit hit, trying next step with fewer tokens');
+                continue;
+            }
+            console.error('❌ Error in GROQ search step:', error);
+        }
+    }
+    
+    return "No relevant results found with token-efficient search";
+}
+
+private getSearchStrategyForGroq(query: string): Array<{query: string, limit: number, step: number}> {
+    const keywords = this.extractKeywords(query);
+    const mainKeyword = this.getMainKeyword(query);
+    
+    return [
+        // Step 1: Exact match with very low limit (most token-efficient)
+        { query: query, limit: 5, step: 1 },
+        
+        // Step 2: Keyword-based with moderate limit
+        { query: keywords, limit: 8, step: 2 },
+        
+        // Step 3: Main keyword only with slightly higher limit
+        { query: mainKeyword, limit: 10, step: 3 },
+        
+        // Step 4: Fallback with very specific filters if needed
+        { query: mainKeyword, limit: 12, step: 4 }
+    ];
+}
+
+private extractKeywords(query: string): string {
+    const stopWords = new Set(['what', 'is', 'the', 'price', 'of', 'and', 'or', 'for', 'do', 'you', 'have', 'can', 'tell', 'me', 'about']);
+    
+    return query.split(' ')
+        .filter(word => word.length > 2)
+        .filter(word => !stopWords.has(word.toLowerCase()))
+        .slice(0, 3) // Max 3 keywords
+        .join(' ');
+}
+
+private getMainKeyword(query: string): string {
+    const keywords = query.split(' ')
+        .filter(word => word.length > 3)
+        .filter(word => !['price', 'collection', 'product'].includes(word.toLowerCase()));
+    
+    return keywords[0] || query.split(' ')[0];
+}
+
+private isValidSearchResult(result: string, originalQuery: string): boolean {
+    if (!result || result.includes('Unable to') || result.includes('No content')) {
+        return false;
+    }
+    
+    // Check if result contains at least one keyword from original query
+    const keywords = this.extractKeywords(originalQuery).split(' ');
+    const lowerResult = result.toLowerCase();
+    
+    return keywords.some(keyword => 
+        keyword.length > 2 && lowerResult.includes(keyword.toLowerCase())
+    );
+}
+
+private isTokenLimitError(error: any): boolean {
+    return error?.status === 413 && 
+           error?.error?.code === 'rate_limit_exceeded' &&
+           error?.error?.message?.includes('Request too large');
+}
+
+
 
   async disconnect(): Promise<void> {
     try {
@@ -229,7 +327,6 @@ export class ContentstackMCPClient {
   }
 }
 
-// ✅ Export singleton instance
 export const getMCPClient = (config: MCPClientConfig): ContentstackMCPClient => {
   return MCPConnectionPool.getInstance(config);
 };

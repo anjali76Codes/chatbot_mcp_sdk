@@ -1,4 +1,3 @@
-// src/dynamic-content-router.ts
 import { BaseLanguageModel } from '@langchain/core/language_models/base';
 import { ContentstackMCPClient } from './mcp-client.js';
 import { ChatMessage } from './chat-agent.js';
@@ -18,43 +17,30 @@ export class DynamicContentRouter {
     this.availableContentTypes = contentTypes;
   }
 
-  // Update available content types
   updateContentTypes(contentTypes: string[]): void {
     this.availableContentTypes = contentTypes;
   }
 
-  // IMPROVED intent detection - better at identifying content needs
   async determineIfContentNeeded(userMessage: string): Promise<boolean> {
     const lowerMessage = userMessage.toLowerCase().trim();
     
-    // First check for obvious general conversation patterns
     const generalPatterns = [
-      // Greetings
       /^(hi|hello|hey|greetings|hola|bonjour|namaste|howdy|yo|sup|wassup|what's up|good morning|good afternoon|good evening)/i,
-      // Gratitude
       /^(thanks|thank you|thx|ty|appreciate it|cheers|grateful|much obliged)/i,
-      // Farewells
       /^(bye|goodbye|see ya|see you|farewell|cya|adios|take care|have a good one)/i,
-      // Politeness
       /^(please|pls|plz|sorry|excuse me|pardon|my apologies|forgive me)/i,
-      // Small talk
       /^(how are you|how're you|how do you do|what's new|how's it going|how have you been)/i,
-      // Identity questions
       /^(who are you|what are you|what can you do|your name|are you ai|are you a bot|are you human)/i,
-      // Simple responses
       /^(yes|no|maybe|sure|ok|okay|alright|fine|cool|great|awesome|perfect|excellent)/i,
-      // Compliments
       /^(good job|well done|nice work|awesome job|you're smart|you're helpful)/i
     ];
 
-    // Check for general patterns first
     const isGeneralConversation = generalPatterns.some(pattern => pattern.test(lowerMessage));
     if (isGeneralConversation) {
       console.log('💬 Detected general conversation pattern');
       return false;
     }
 
-    // Use LLM for ambiguous cases - but be more aggressive about content detection
     const context = `
 Analyze the user's message and determine if it requires accessing specific information from a content database.
 
@@ -96,57 +82,271 @@ RESPONSE:`.trim();
       return needsContent;
     } catch (error) {
       console.error('❌ Error determining if content is needed:', error);
-      // Fallback: be more aggressive about content detection
-      // Assume content is needed for anything that's not obviously general
       const isDefinitelyGeneral = lowerMessage.match(/^(hi|hello|hey|thanks|thank you|bye|goodbye|how are you|you're welcome)/i);
       return !isDefinitelyGeneral;
     }
   }
 
-  // Route query to the appropriate content type
   async routeQuery(userMessage: string, history: ChatMessage[] = []): Promise<string> {
     if (this.availableContentTypes.length === 0) {
       return "No content types available to search.";
     }
 
-    // First, determine the best content type using LLM
     const bestContentType = await this.selectContentType(userMessage);
     
     console.log(`🧠 LLM selected content type: ${bestContentType}`);
 
-    // Search in the selected content type
+    // CHECK IF USING GROQ AND BYPASS NORMAL SEARCH TO PREVENT RETRIES
+    const isGroq = this.isGroqModel();
+    
+    if (isGroq) {
+      console.log('🚀 Using direct GROQ-optimized search (bypassing retry mechanism)');
+      return await this.handleGroqQueryDirect(userMessage, bestContentType, history);
+    }
+
+    // Original code for other providers
     try {
       const searchResult = await this.mcpClient.searchContent(userMessage, bestContentType);
       
       if (!searchResult || searchResult.includes('Unable to') || searchResult.includes('No content')) {
-        console.log(`❌ No results in ${bestContentType}, trying other content types...`);
-        
-        // If no results in the selected type, try other types
-        for (const contentType of this.availableContentTypes) {
-          if (contentType !== bestContentType) {
-            console.log(`🔄 Trying fallback content type: ${contentType}`);
-            const fallbackResult = await this.mcpClient.searchContent(userMessage, contentType);
-            if (fallbackResult && !fallbackResult.includes('Unable to') && !fallbackResult.includes('No content')) {
-              console.log(`✅ Found results in fallback type: ${contentType}`);
-              return this.generateResponseFromContent(fallbackResult, userMessage, history);
-            }
-          }
-        }
-        return "I couldn't find specific information about that. Could you try asking in a different way?";
+        return await this.handleNoResults(userMessage, bestContentType, history);
       }
 
       return this.generateResponseFromContent(searchResult, userMessage, history);
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error searching content:', error);
-      return "I encountered an error while searching for information. Please try again.";
+      
+      // Handle token limit errors for other providers
+      if (this.isTokenLimitError(error)) {
+        console.log('🔥 Token limit exceeded, optimizing query...');
+        return await this.handleTokenLimitError(userMessage, bestContentType, history);
+      }
+      
+      return await this.handleGenericError(userMessage, history);
     }
   }
 
-  // IMPROVED content type selection with better contact detection
+  // ADD THIS METHOD TO BYPASS RETRY MECHANISM FOR GROQ
+  private async handleGroqQueryDirect(
+    userMessage: string, 
+    contentType: string, 
+    history: ChatMessage[]
+  ): Promise<string> {
+    try {
+      console.log('🔍 Using direct GROQ-optimized search');
+      // Use smartSearchContent if available, otherwise fallback to optimized search
+      let searchResult: string;
+      
+      if (typeof (this.mcpClient as any).smartSearchContent === 'function') {
+        searchResult = await (this.mcpClient as any).smartSearchContent(userMessage, contentType, 'groq');
+      } else {
+        // Fallback to optimized search
+        const optimizedQuery = this.optimizeQueryForTokenLimit(userMessage);
+        searchResult = await this.mcpClient.searchContent(optimizedQuery, contentType);
+      }
+      
+      if (this.isValidSearchResult(searchResult, userMessage)) {
+        return this.generateResponseFromContent(searchResult, userMessage, history);
+      }
+      
+      return await this.handleNoResults(userMessage, contentType, history);
+    } catch (error: any) {
+      console.error('❌ Error in direct GROQ search:', error);
+      
+      // Even if direct search fails, don't retry - provide immediate response
+      if (this.isTokenLimitError(error)) {
+        return this.getTokenLimitFallbackResponse(userMessage);
+      }
+      
+      return await this.handleGenericError(userMessage, history);
+    }
+  }
+
+  // ADD THIS HELPER METHOD
+  private isGroqModel(): boolean {
+    // Check if we're using GROQ
+    const model = this.model as any;
+    return model?.lc_kwargs?.modelName?.includes('llama') || 
+           model?.constructor?.name?.toLowerCase().includes('groq') ||
+           (model?.model && model.model.includes('llama'));
+  }
+
+ private isValidSearchResult(result: string, originalQuery: string): boolean {
+    return (
+        result.length > 10 && 
+        !result.includes('Unable to') && 
+        !result.includes('No content') &&
+        !result.includes('No relevant results')
+    );
+}
+
+  private getTokenLimitFallbackResponse(userMessage: string): string {
+    const lowerMessage = userMessage.toLowerCase();
+    
+    if (lowerMessage.includes('price') || lowerMessage.includes('cost')) {
+      return "For current pricing information, please visit our website or contact customer service for the most accurate details.";
+    }
+    
+    if (lowerMessage.includes('product') || lowerMessage.includes('item')) {
+      return "I'm having trouble accessing our product catalog right now. Please check our online store or contact us for product information.";
+    }
+    
+    return "I'm experiencing temporary technical limitations. Please try again shortly or contact us for immediate assistance.";
+  }
+
+  // Add this method to handle GROQ token limit errors specifically
+  private isTokenLimitError(error: any): boolean {
+    return error?.status === 413 && 
+           error?.error?.code === 'rate_limit_exceeded' &&
+           error?.error?.message?.includes('Request too large for model');
+  }
+
+  // Add this method to handle token limit errors
+  private async handleTokenLimitError(
+    userMessage: string, 
+    originalContentType: string, 
+    history: ChatMessage[]
+  ): Promise<string> {
+    try {
+      // Strategy 1: Optimize the query
+      const optimizedQuery = this.optimizeQueryForTokenLimit(userMessage);
+      console.log(`🔄 Trying optimized query: "${optimizedQuery}"`);
+      
+      const optimizedResult = await this.mcpClient.searchContent(optimizedQuery, originalContentType);
+      if (optimizedResult && !optimizedResult.includes('Unable to')) {
+        return this.generateResponseFromContent(optimizedResult, userMessage, history);
+      }
+
+      // Strategy 2: Try related content types
+      const relatedTypes = this.getRelatedContentTypes(originalContentType);
+      for (const contentType of relatedTypes) {
+        try {
+          console.log(`🔄 Trying related content type: ${contentType}`);
+          const result = await this.mcpClient.searchContent(userMessage, contentType);
+          if (result && !result.includes('Unable to')) {
+            return this.generateResponseFromContent(result, userMessage, history);
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+
+      return "I'm having trouble accessing our product database right now. Please try asking about specific products or contact customer service for detailed information.";
+
+    } catch (error) {
+      console.error('❌ Error in token limit handler:', error);
+      return await this.handleGenericError(userMessage, history);
+    }
+  }
+
+  // Add this method to optimize queries for token limits
+  private optimizeQueryForTokenLimit(query: string): string {
+    // Extract key terms to reduce token usage
+    const keyTerms = query.split(' ')
+      .filter(term => term.length > 3) // Remove short words
+      .slice(0, 3); // Limit to 3 key terms
+    
+    return keyTerms.join(' ');
+  }
+
+  // Add this method to get related content types
+  private getRelatedContentTypes(originalType: string): string[] {
+    const contentTypeRelations: Record<string, string[]> = {
+      'product': ['collections', 'categories', 'faqs'],
+      'faqs': ['product', 'policies', 'shipping_policies'],
+      'shipping_policies': ['faqs', 'return_policies'],
+      'collections': ['product', 'categories']
+    };
+    
+    return contentTypeRelations[originalType] || 
+           this.availableContentTypes.filter(type => type !== originalType);
+  }
+
+  // Update the handleNoResults method
+  private async handleNoResults(
+    userMessage: string, 
+    originalContentType: string, 
+    history: ChatMessage[]
+  ): Promise<string> {
+    console.log(`❌ No results in ${originalContentType}, trying other content types...`);
+    
+    // Try other content types in priority order
+    const priorityOrder = this.getSearchPriority(originalContentType);
+    
+    for (const contentType of priorityOrder) {
+      if (contentType !== originalContentType) {
+        try {
+          console.log(`🔄 Trying alternative content type: ${contentType}`);
+          const result = await this.mcpClient.searchContent(userMessage, contentType);
+          if (result && !result.includes('Unable to')) {
+            console.log(`✅ Found results in ${contentType}`);
+            return this.generateResponseFromContent(result, userMessage, history);
+          }
+        } catch (error) {
+          console.log(`❌ Error searching in ${contentType}:`, error);
+          continue;
+        }
+      }
+    }
+    
+    return "I couldn't find specific information about that. Could you try asking in a different way or be more specific?";
+  }
+
+  // Add this method to get search priority
+  private getSearchPriority(originalType: string): string[] {
+    const priorityMap: Record<string, string[]> = {
+      'product': ['collections', 'categories', 'faqs', ...this.availableContentTypes],
+      'faqs': ['product', 'policies', 'shipping_policies', ...this.availableContentTypes],
+      'default': this.availableContentTypes.filter(type => type !== originalType)
+    };
+    
+    return priorityMap[originalType] || priorityMap.default;
+  }
+
+  // Add this method to handle generic errors
+  private async handleGenericError(userMessage: string, history: ChatMessage[]): Promise<string> {
+    // Simple fallback response without content search
+    const context = `
+The user asked: "${userMessage}"
+
+I encountered a technical error while searching for information. Provide a helpful response that:
+1. Acknowledges the issue politely
+2. Suggests alternative ways to get information
+3. Doesn't mention technical details
+4. Is under 50 words
+
+Response:`.trim();
+
+    try {
+      const response = await this.model.invoke(context);
+      return this.cleanResponse(response);
+    } catch (error) {
+      return "I'm having trouble accessing our information right now. Please try again later or contact customer service for assistance.";
+    }
+  }
+
+  // Add this cleanResponse method
+  private cleanResponse(response: any): string {
+    let content: string;
+    if (typeof response === 'string') {
+      content = response;
+    } else if (response && typeof response.content === 'string') {
+      content = response.content;
+    } else {
+      content = String(response);
+    }
+    
+    return content
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/_(.*?)_/g, '$1')
+      .replace(/`(.*?)`/g, '$1')
+      .trim();
+  }
+
   private async selectContentType(userMessage: string): Promise<string> {
     const lowerMessage = userMessage.toLowerCase();
     
-    // Quick detection for common query types before using LLM
     if (lowerMessage.includes('contact') || 
         lowerMessage.includes('email') || 
         lowerMessage.includes('phone') || 
@@ -154,7 +354,6 @@ RESPONSE:`.trim();
         lowerMessage.includes('call') ||
         lowerMessage.includes('reach') ||
         lowerMessage.includes('get in touch')) {
-      // Look for contact-related content types first
       const contactTypes = this.availableContentTypes.filter(type => 
         type.toLowerCase().includes('contact') || 
         type.toLowerCase().includes('info') ||
@@ -164,11 +363,10 @@ RESPONSE:`.trim();
       );
       
       if (contactTypes.length > 0) {
-        return contactTypes[0]; // Return the first matching contact type
+        return contactTypes[0];
       }
     }
     
-    // Use LLM for other cases
     const context = `
 Analyze the user's question and select the most appropriate content type from the available options.
 
@@ -199,33 +397,27 @@ RESPONSE:`.trim();
       let selectedType = typeof response === 'string' ? response : response.content;
       selectedType = selectedType.trim();
 
-      // Validate that the selected type is available
       if (this.availableContentTypes.includes(selectedType)) {
         return selectedType;
       }
 
-      // If the LLM returned an invalid type, find the closest match
       const closestMatch = this.findClosestContentType(selectedType);
       return closestMatch || this.availableContentTypes[0];
     } catch (error) {
       console.error('❌ Error selecting content type:', error);
-      // Fallback to first available type
       return this.availableContentTypes[0];
     }
   }
 
-  // Find the closest matching content type
   private findClosestContentType(requestedType: string): string | null {
     const lowerRequested = requestedType.toLowerCase();
     
-    // First try exact match
     for (const contentType of this.availableContentTypes) {
       if (contentType.toLowerCase() === lowerRequested) {
         return contentType;
       }
     }
     
-    // Then try partial match
     for (const contentType of this.availableContentTypes) {
       if (contentType.toLowerCase().includes(lowerRequested) || 
           lowerRequested.includes(contentType.toLowerCase())) {
@@ -233,7 +425,6 @@ RESPONSE:`.trim();
       }
     }
     
-    // Then try word-based matching
     const requestedWords = lowerRequested.split(/[^a-z0-9]+/).filter(Boolean);
     let bestMatch: string | null = null;
     let bestScore = 0;
@@ -260,7 +451,6 @@ RESPONSE:`.trim();
     return bestMatch;
   }
 
-  // Generate response from content
   private async generateResponseFromContent(content: string, userMessage: string, history: ChatMessage[] = []): Promise<string> {
     const historyContext = history
       .slice(-3)
@@ -291,7 +481,6 @@ YOUR RESPONSE:`.trim();
 
     const response = await this.model.invoke(context);
     
-    // Clean the response
     let cleanResponse = typeof response === 'string' ? response : response.content;
     cleanResponse = cleanResponse
       .replace(/\*\*(.*?)\*\*/g, '$1')

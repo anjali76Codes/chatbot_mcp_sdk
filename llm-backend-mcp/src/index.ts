@@ -1,16 +1,46 @@
-// src/index.ts
 import { ContentstackChatAgent, ChatMessage } from './chat-agent.js';
 import * as readline from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
 
 const history: ChatMessage[] = [];
 
+// Helper function to get provider API key
+function getProviderApiKey(provider: string): string {
+  const envVars = {
+    openai: process.env.OPENAI_API_KEY,
+    anthropic: process.env.ANTHROPIC_API_KEY,
+    groq: process.env.GROQ_API_KEY,
+    google: process.env.GOOGLE_API_KEY
+  };
+  
+  return envVars[provider as keyof typeof envVars] || '';
+}
+
+// Helper function to get default model
+function getDefaultModel(provider: string): string {
+  const defaultModels = {
+    openai: 'gpt-4o-mini',
+    anthropic: 'claude-3-haiku-20240307',
+    groq: 'llama-3.1-8b-instant',
+    google: 'gemini-2.5-flash'
+  };
+  return defaultModels[provider as keyof typeof defaultModels] || 'gemini-2.5-flash';
+}
+
 async function main(): Promise<void> {
+  const provider = process.env.LLM_PROVIDER || 'google';
+  const apiKey = process.env.LLM_API_KEY || getProviderApiKey(provider);
+  const model = process.env.LLM_MODEL || getDefaultModel(provider);
+  
   const requiredEnvVars = [
-    'GOOGLE_API_KEY', 
     'CONTENTSTACK_API_KEY', 
     'CONTENTSTACK_MANAGEMENT_TOKEN'
   ];
+  
+  // Check if we have at least one valid API key
+  if (!apiKey) {
+    throw new Error(`No API key found for provider ${provider}. Please set LLM_API_KEY or ${provider.toUpperCase()}_API_KEY`);
+  }
   
   for (const envVar of requiredEnvVars) {
     if (!process.env[envVar]) {
@@ -20,6 +50,7 @@ async function main(): Promise<void> {
 
   const rl = readline.createInterface({ input, output });
   console.log('🚀 Starting Contentstack Chat Agent...\n');
+  console.log(`🤖 Using ${provider.toUpperCase()} provider with model: ${model}\n`);
 
   const chatAgent = new ContentstackChatAgent({
     contentstack: {
@@ -29,9 +60,9 @@ async function main(): Promise<void> {
       region: process.env.CONTENTSTACK_REGION || 'us'
     },
     llm: {
-      provider: 'google',
-      apiKey: process.env.GOOGLE_API_KEY,
-      model: process.env.LLM_MODEL || 'gemini-2.5-flash',
+      provider: provider as 'google' | 'openai' | 'anthropic' | 'groq',
+      apiKey: apiKey,
+      model: model,
       temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.3')
     }
   });
@@ -42,7 +73,9 @@ async function main(): Promise<void> {
     console.log('💬 Chat Agent is ready! Type your questions below.');
     console.log('Type "exit", "quit", or press Ctrl+C to end the conversation.');
     console.log('Type "stream" to enable streaming mode.');
-    console.log('Type "normal" to disable streaming mode.\n');
+    console.log('Type "normal" to disable streaming mode.');
+    console.log('Type "clear" to clear conversation history.');
+    console.log('Type "provider" to show current LLM provider.\n');
 
     let streamingMode = false;
 
@@ -73,11 +106,18 @@ async function main(): Promise<void> {
         continue;
       }
 
+      if (cleaned === 'provider') {
+        console.log(`\n🤖 Current LLM Provider: ${provider.toUpperCase()}`);
+        console.log(`🤖 Current Model: ${model}`);
+        console.log(`🤖 API Key: ${apiKey ? '✅ Set' : '❌ Missing'}\n`);
+        continue;
+      }
+
       console.log('🤖 Thinking...');
       const startTime = Date.now();
 
       if (streamingMode) {
-        // 🚀 STREAMING MODE - Use the AsyncGenerator version
+        // 🚀 STREAMING MODE
         console.log('\n🤖 Assistant: ');
         
         let fullResponse = '';
@@ -93,7 +133,7 @@ async function main(): Promise<void> {
         history.push({ role: 'assistant', content: fullResponse });
         
       } else {
-        // 🚀 REGULAR MODE (existing behavior)
+        // 🚀 REGULAR MODE
         const response = await chatAgent.sendMessage(userInput, history);
         console.log(`\n🤖 Assistant: ${response}\n`);
         history.push({ role: 'user', content: userInput });

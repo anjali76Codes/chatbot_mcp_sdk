@@ -1,5 +1,3 @@
-// src/types/contentstack.ts
-
 export interface ContentstackEntry {
   uid: string;
   title: string;
@@ -21,3 +19,22 @@ export interface SearchCacheItem {
   data: string;
   timestamp: number;
 }
+
+export interface ChatAgentConfig {
+  contentstack?: {
+    apiKey?: string;
+    managementToken?: string;
+    environment?: string;
+    region?: string;
+  };
+  
+  llm?: {
+    provider: 'google' | 'openai' | 'anthropic' | 'groq';
+    apiKey?: string;
+    model?: string;
+    temperature?: number;
+    baseURL?: string;
+  };
+}
+
+export type LLMProvider = 'google' | 'openai' | 'anthropic' | 'groq';
