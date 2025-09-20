@@ -35,10 +35,9 @@ export interface ContentstackConfig {
   maxEntries?: number;
 }
 
-export interface ChatConfig {
-  apiBaseUrl: string;
-  contentstack?: ContentstackConfig;
-  llm?: LLMConfig;
+export interface BackendConfig {
+  contentstack: ContentstackConfig;
+  llm: LLMConfig;
   // Additional options
   streaming?: boolean;
   timeout?: number;
@@ -51,10 +50,15 @@ export interface ChatConfig {
   fallbackMessages?: string[];
 }
 
+export interface ChatConfig {
+  apiBaseUrl: string;
+  config?: BackendConfig; // This will be populated from backend
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
-  timestamp: Date;
+   timestamp: Date; 
   id?: string;
   isStreaming?: boolean;
   metadata?: Record<string, any>;
@@ -64,8 +68,6 @@ export interface SendMessageOptions {
   conversationId?: string;
   resetConversation?: boolean;
   metadata?: Record<string, any>;
-  stream?: boolean;
-  onChunk?: (chunk: StreamingChunk) => void;
   // Content filtering
   contentTypes?: string[];
   // Response formatting
@@ -74,7 +76,7 @@ export interface SendMessageOptions {
   language?: string;
 }
 
-export interface StreamMessageOptions extends Omit<SendMessageOptions, 'stream' | 'onChunk'> {
+export interface StreamMessageOptions extends Omit<SendMessageOptions, 'onChunk'> {
   onChunk: (chunk: StreamingChunk) => void;
 }
 
@@ -118,16 +120,16 @@ export interface ChatAgentState {
   isInitialized: boolean;
   hasMessages: boolean;
   canCancel: boolean;
+  isInitializing: boolean;
+  config: BackendConfig | null;
+  hasChatHistory: boolean; // Add this line
 }
 
 export interface ChatAgentActions {
   sendMessage: (message: string, options?: SendMessageOptions) => Promise<SendMessageResponse>;
   sendMessageStream: (message: string, options: StreamMessageOptions) => Promise<void>;
   clearMessages: () => void;
-  updateConfig: (newConfig: Partial<ChatConfig>) => void;
   cancelRequest: () => void;
-  loadConversation: (conversationId: string) => Promise<void>;
-  saveConversation: () => Promise<string>;
 }
 
 export interface ChatAgentHook extends ChatAgentState, ChatAgentActions {}
@@ -150,11 +152,12 @@ export const ErrorCodes = {
   CONTENTSTACK_ERROR: 'CONTENTSTACK_ERROR',
   LLM_ERROR: 'LLM_ERROR',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
+  CONFIG_ERROR: 'CONFIG_ERROR',
 } as const;
 
 // Event types for real-time updates
 export interface ChatEvent {
-  type: 'message' | 'typing' | 'error' | 'conversation_update';
+  type: 'message' | 'typing' | 'error' | 'conversation_update' | 'config_loaded';
   data: any;
   timestamp: Date;
 }
@@ -183,6 +186,11 @@ export interface ConversationUpdateEvent extends ChatEvent {
     conversationId: string;
     action: 'created' | 'updated' | 'deleted';
   };
+}
+
+export interface ConfigLoadedEvent extends ChatEvent {
+  type: 'config_loaded';
+  data: BackendConfig;
 }
 
 // Configuration validation types
@@ -243,6 +251,7 @@ export interface UseChatAgentOptions {
   onMessage?: (message: ChatMessage) => void;
   onError?: (error: ChatError) => void;
   onConversationUpdate?: (conversationId: string) => void;
+  onConfigLoaded?: (config: BackendConfig) => void;
 }
 
 // Cache types
@@ -259,4 +268,31 @@ export interface CacheConfig {
   ttl: number;
   maxSize: number;
   strategy: 'lru' | 'fifo' | 'lfu';
+}
+
+// Chat Window Props
+export interface ChatWindowProps {
+  apiBaseUrl: string;
+  title?: string;
+  position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+  showHeader?: boolean;
+  streaming?: boolean;
+  className?: string;
+  placeholder?: string;
+  showResetButton?: boolean;
+  onConfigLoaded?: (config: BackendConfig) => void;
+  onError?: (error: ChatError) => void;
+}
+
+// Backend Config Response
+export interface BackendConfigResponse {
+  contentstack: ContentstackConfig;
+  llm: LLMConfig;
+  streaming?: boolean;
+  timeout?: number;
+  retryAttempts?: number;
+  typingIndicator?: boolean;
+  typingSpeed?: number;
+  showErrors?: boolean;
+  fallbackMessages?: string[];
 }

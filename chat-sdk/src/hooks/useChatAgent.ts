@@ -1,14 +1,77 @@
-import { useState, useCallback, useRef } from 'react';
-import { ChatConfig, ChatMessage, SendMessageOptions, SendMessageResponse, StreamMessageOptions, StreamingChunk } from '../types';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { 
+  ChatConfig, 
+  ChatMessage, 
+  SendMessageOptions, 
+  SendMessageResponse, 
+  StreamMessageOptions, 
+  StreamingChunk, 
+  BackendConfig,
+  ChatError,
+  ErrorCodes 
+} from '../types';
+import { ChatStorage } from '../storage';
 
-export const useChatAgent = (config: ChatConfig) => {
+export const useChatAgent = (apiBaseUrl: string) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string>('');
+  const [config, setConfig] = useState<BackendConfig | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Load messages from storage on component mount
+  useEffect(() => {
+    const storedMessages = ChatStorage.loadChat();
+    if (storedMessages.length > 0) {
+      setMessages(storedMessages);
+    }
+  }, []);
+
+  // Save messages to storage whenever they change
+  useEffect(() => {
+    if (messages.length > 0) {
+      ChatStorage.saveChat(messages);
+    }
+  }, [messages]);
+
+  // Fetch configuration from backend on mount
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        setIsInitializing(true);
+        const response = await fetch(`${apiBaseUrl}/v1/config`);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `Failed to fetch configuration: ${response.status}`);
+        }
+        
+        const configData = await response.json();
+        setConfig(configData);
+        setError(null);
+      } catch (err: any) {
+        console.error('Failed to load chat configuration:', err);
+        const chatError: ChatError = {
+          code: ErrorCodes.CONFIG_ERROR,
+          message: err instanceof Error ? err.message : 'Failed to initialize chat agent',
+          retryable: true
+        };
+        setError(chatError.message);
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    fetchConfig();
+  }, [apiBaseUrl]);
+
   const sendMessage = useCallback(async (message: string, options?: SendMessageOptions): Promise<SendMessageResponse> => {
+    if (!config) {
+      throw new Error('Chat agent not initialized. Configuration not loaded.');
+    }
+
     // Cancel any ongoing request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -21,16 +84,15 @@ export const useChatAgent = (config: ChatConfig) => {
     try {
       const payload = {
         message,
-        config: {
-          contentstack: config.contentstack,
-          llm: config.llm
-        },
         conversationId: options?.conversationId || conversationId,
         resetConversation: options?.resetConversation,
-        metadata: options?.metadata
+        metadata: options?.metadata,
+        contentTypes: options?.contentTypes,
+        format: options?.format,
+        language: options?.language
       };
 
-      const response = await fetch(`${config.apiBaseUrl}/v1/chat`, {
+      const response = await fetch(`${apiBaseUrl}/v1/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -51,15 +113,28 @@ export const useChatAgent = (config: ChatConfig) => {
         setConversationId(data.conversationId);
       }
 
+      // Update messages state (this will automatically trigger storage save)
       setMessages(prev => [...prev, 
-        { role: 'user', content: message, timestamp: new Date() },
-        { role: 'assistant', content: data.response, timestamp: new Date() }
+        { 
+          role: 'user', 
+          content: message, 
+          timestamp: new Date(),
+          metadata: options?.metadata 
+        },
+        { 
+          role: 'assistant', 
+          content: data.response, 
+          timestamp: new Date(),
+          metadata: data.metadata 
+        }
       ]);
       
       return {
         response: data.response,
         conversationId: data.conversationId || conversationId,
-        metadata: data.metadata
+        metadata: data.metadata,
+        usage: data.usage,
+        latency: data.latency
       };
       
     } catch (err: any) {
@@ -74,12 +149,16 @@ export const useChatAgent = (config: ChatConfig) => {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [config, conversationId]);
+  }, [apiBaseUrl, config, conversationId]);
 
   const sendMessageStream = useCallback(async (
     message: string, 
     options: StreamMessageOptions
   ): Promise<void> => {
+    if (!config) {
+      throw new Error('Chat agent not initialized. Configuration not loaded.');
+    }
+
     // Cancel any ongoing request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -92,16 +171,15 @@ export const useChatAgent = (config: ChatConfig) => {
     try {
       const payload = {
         message,
-        config: {
-          contentstack: config.contentstack,
-          llm: config.llm
-        },
         conversationId: options?.conversationId || conversationId,
         resetConversation: options?.resetConversation,
-        metadata: options?.metadata
+        metadata: options?.metadata,
+        contentTypes: options?.contentTypes,
+        format: options?.format,
+        language: options?.language
       };
 
-      const response = await fetch(`${config.apiBaseUrl}/v1/chat/stream`, {
+      const response = await fetch(`${apiBaseUrl}/v1/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -118,8 +196,19 @@ export const useChatAgent = (config: ChatConfig) => {
       // Add user message and empty assistant message for streaming
       setMessages(prev => [
         ...prev, 
-        { role: 'user', content: message, timestamp: new Date() },
-        { role: 'assistant', content: '', timestamp: new Date(), isStreaming: true }
+        { 
+          role: 'user', 
+          content: message, 
+          timestamp: new Date(),
+          metadata: options.metadata 
+        },
+        { 
+          role: 'assistant', 
+          content: '', 
+          timestamp: new Date(), 
+          isStreaming: true,
+          metadata: options.metadata 
+        }
       ]);
 
       const reader = response.body?.getReader();
@@ -219,12 +308,13 @@ export const useChatAgent = (config: ChatConfig) => {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [config, conversationId]);
+  }, [apiBaseUrl, config, conversationId]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
     setError(null);
     setConversationId('');
+    ChatStorage.clearChat(); // Clear from storage as well
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -237,27 +327,25 @@ export const useChatAgent = (config: ChatConfig) => {
     }
   }, []);
 
-  const updateConfig = useCallback((newConfig: Partial<ChatConfig>) => {
-    return { ...config, ...newConfig };
-  }, [config]);
-
   return {
     // State
     messages,
     isLoading,
     error,
     conversationId,
+    isInitializing,
+    config,
     
     // Actions
     sendMessage,
     sendMessageStream,
     clearMessages,
-    updateConfig,
     cancelRequest,
     
     // Status helpers
-    isInitialized: !!config.apiBaseUrl,
+    isInitialized: !!config,
     hasMessages: messages.length > 0,
-    canCancel: isLoading && abortControllerRef.current !== null
+    canCancel: isLoading && abortControllerRef.current !== null,
+    hasChatHistory: ChatStorage.hasChatHistory()
   };
 };

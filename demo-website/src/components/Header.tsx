@@ -58,13 +58,13 @@ export const Header = () => {
         >
           About
         </Link>
-        <Link 
-          to="/" 
+         <Link 
+          to="/analytics" 
           className={`text-sm font-medium transition-colors ${
-            isActive('/contact') ? 'text-[#ecab13]' : 'text-[#000000] hover:text-[#ecab13]'
+            isActive('/analytics') ? 'text-[#ecab13]' : 'text-[#000000] hover:text-[#ecab13]'
           }`}
         >
-          Contact
+          Analytics
         </Link>
       </nav>
       

@@ -195,6 +195,116 @@ app.post('/v1/clear-cache', (req, res) => {
   res.json({ status: 'Cache cleared' });
 });
 
+
+
+
+
+
+
+// Analytics endpoints
+app.get('/api/analytics/overview', (req, res) => {
+  try {
+    if (!chatAgent) {
+      return res.status(503).json({ error: 'Chat agent not initialized' });
+    }
+    
+    const snapshot = chatAgent.getAnalyticsSnapshot();
+    res.json(snapshot);
+  } catch (error) {
+    console.error('❌ Error fetching analytics overview:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+});
+
+app.get('/api/analytics/live-metrics', (req, res) => {
+  try {
+    if (!chatAgent) {
+      return res.status(503).json({ error: 'Chat agent not initialized' });
+    }
+    
+    const liveMetrics = chatAgent.getLiveMetrics();
+    res.json(liveMetrics);
+  } catch (error) {
+    console.error('❌ Error fetching live metrics:', error);
+    res.status(500).json({ error: 'Failed to fetch live metrics' });
+  }
+});
+
+app.get('/api/analytics/popular-queries', (req, res) => {
+  try {
+    if (!chatAgent) {
+      return res.status(503).json({ error: 'Chat agent not initialized' });
+    }
+    
+    const snapshot = chatAgent.getAnalyticsSnapshot();
+    res.json(snapshot.popularQueries);
+  } catch (error) {
+    console.error('❌ Error fetching popular queries:', error);
+    res.status(500).json({ error: 'Failed to fetch popular queries' });
+  }
+});
+
+app.get('/api/analytics/content-performance', (req, res) => {
+  try {
+    if (!chatAgent) {
+      return res.status(503).json({ error: 'Chat agent not initialized' });
+    }
+    
+    const snapshot = chatAgent.getAnalyticsSnapshot();
+    res.json(snapshot.contentTypePerformance);
+  } catch (error) {
+    console.error('❌ Error fetching content performance:', error);
+    res.status(500).json({ error: 'Failed to fetch content performance' });
+  }
+});
+
+app.get('/api/analytics/health', (req, res) => {
+  try {
+    if (!chatAgent) {
+      return res.status(503).json({ 
+        status: 'unhealthy', 
+        message: 'Chat agent not initialized' 
+      });
+    }
+    
+    const snapshot = chatAgent.getAnalyticsSnapshot();
+    const liveMetrics = chatAgent.getLiveMetrics();
+    
+    res.json({
+      status: 'healthy',
+      totalQueries: snapshot.totalQueries,
+      queriesPerMinute: liveMetrics.queriesPerMinute,
+      activeSessions: liveMetrics.activeSessions,
+      errorRate: liveMetrics.errorRate
+    });
+  } catch (error) {
+    console.error('❌ Error in health check:', error);
+    res.status(500).json({ 
+      status: 'unhealthy', 
+      message: 'Internal server error' 
+    });
+  }
+});
+
+// Reset analytics (optional - for testing)
+app.post('/api/analytics/reset', (req, res) => {
+  try {
+    if (!chatAgent) {
+      return res.status(503).json({ error: 'Chat agent not initialized' });
+    }
+    
+    // This would require adding a reset method to your analytics tracker
+    // chatAgent.resetAnalytics();
+    res.json({ message: 'Analytics reset would occur here' });
+  } catch (error) {
+    console.error('❌ Error resetting analytics:', error);
+    res.status(500).json({ error: 'Failed to reset analytics' });
+  }
+});
+
+
+
+
 // Start server
 initializeServer().then(() => {
   app.listen(port, () => {

@@ -1,46 +1,33 @@
 // src/App.tsx
-import { Routes, Route } from 'react-router-dom'
-import { ChatWindow } from 'angupta-chat-sdk'
+import { Routes, Route } from 'react-router-dom';
+import { ChatWindow } from 'angupta-chat-sdk';
 import { HomePage } from './pages/HomePage'
 import { FAQsPage } from './pages/FAQsPage'
 import { PoliciesPage } from './pages/PoliciesPage'
 import { ShopPage } from './pages/ShopPage'
+import { AnalyticsPage } from './pages/AnalyticsPage'
+
 
 function App() {
-  const chatConfig = {
-    apiBaseUrl: import.meta.env.VITE_API_BASE_URL,
-    contentstack: {
-      apiKey: import.meta.env.VITE_CONTENTSTACK_API_KEY,
-      deliveryToken: import.meta.env.VITE_CONTENTSTACK_DELIVERY_TOKEN,
-      environment: import.meta.env.VITE_CONTENTSTACK_ENVIRONMENT,
-    },
-    llm: {
-      provider: 'google' as const,
-      apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
-      model: 'gemini-2.5-flash',
-    },
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/faqs" element={<FAQsPage />} />
         <Route path="/policies" element={<PoliciesPage />} />
-        
         <Route path="/shop" element={<ShopPage />} />
-        {/* Add other routes as needed */}
+        <Route path="/analytics" element={<AnalyticsPage/>}/>
       </Routes>
 
       {/* Floating Chat Window - appears on all pages */}
       <div className="fixed bottom-6 right-6 z-50">
         <ChatWindow 
-          config={chatConfig}
+          apiBaseUrl={import.meta.env.VITE_API_BASE_URL}
           streaming={true}
           title="Jewelry Assistant"
           position="bottom-right"
-        />
         
+        />
       </div>
 
       {/* Footer - appears on all pages */}
@@ -54,4 +41,4 @@ function App() {
   )
 }
 
-export default App;
+export default App

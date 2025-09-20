@@ -5,9 +5,10 @@ import { ChatGroq } from '@langchain/groq';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { ContentstackMCPClient } from './mcp-client.js';
 import * as dotenv from 'dotenv';
-import { AutoContentMapper } from './auto-content-mapper.js';
 import { DynamicContentRouter } from './dynamic-content-router.js';
 import { ChatAgentConfig } from './types/contentstack.js';
+import { AnalyticsTracker } from './analytics-tracker.js';
+import { v4 as uuidv4 } from 'uuid';
 
 dotenv.config();
 
@@ -60,8 +61,9 @@ export class ContentstackChatAgent {
   private cache: ResponseCache;
   private availableContentTypes: string[] = [];
   private lastContentTypeUpdate: number = 0;
-  private contentMapper: AutoContentMapper | null = null;
   private contentRouter: DynamicContentRouter | null = null;
+  private analyticsTracker: AnalyticsTracker;
+  private sessionId: string;
   
   // Conversation buffer properties
   private conversationBuffer: ChatMessage[] = [];
@@ -70,6 +72,8 @@ export class ContentstackChatAgent {
   constructor(config: ChatAgentConfig = {}) {
     this.config = config;
     this.cache = new ResponseCache();
+    this.analyticsTracker = new AnalyticsTracker();
+    this.sessionId = uuidv4();
     
     // Initialize the model based on provider
     this.model = this.initializeModel(config);
@@ -82,6 +86,12 @@ export class ContentstackChatAgent {
         region: config.contentstack.region
       });
     }
+
+    // Set up periodic analytics snapshot saving
+    setInterval(() => {
+      this.analyticsTracker.saveSnapshot();
+      this.analyticsTracker.cleanupSessions();
+    }, 60000); // Save every minute
   }
 
   private initializeModel(config: ChatAgentConfig): BaseChatModel {
@@ -160,17 +170,10 @@ export class ContentstackChatAgent {
         await this.mcpClient.connect();
         this.isMCPInitialized = true;
         console.log('✅ MCP connected successfully');
-
-        this.contentMapper = new AutoContentMapper(this.mcpClient);
-        
-        if (this.contentMapper.shouldRefreshMapping()) {
-          console.log('🔄 Generating content mapping...');
-          await this.contentMapper.generateMapping();
-        }
         
         await this.getAvailableContentTypes(true);
         
-        // Initialize the dynamic content router
+        // Initialize the dynamic content router with basic content types
         this.contentRouter = new DynamicContentRouter(
           this.model,
           this.mcpClient,
@@ -362,7 +365,7 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
     
     if (lastAssistantMessage) {
       // Extract product name from the last assistant response
-      const productMatch = lastAssistantMessage.content.match(/([A-Za-z][A-Za-z\s]+earrings|[A-Za-z][A-Za-z\s]+necklace|[A-Za-z][A-Za-z\s]+ring|[A-Za-z][A-Za-z\s]+bracelet|[A-Za-z][A-Za-z\s]+choker)/i);
+      const productMatch = lastAssistantMessage.content.match(/([A-Zaza-z][A-Za-z\s]+earrings|[A-Za-z][A-Za-z\s]+necklace|[A-Za-z][A-Za-z\s]+ring|[A-Za-z][A-Za-z\s]+bracelet|[A-Za-z][A-Za-z\s]+choker)/i);
       
       if (productMatch) {
         const productName = productMatch[1];
@@ -376,6 +379,9 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
 
   async sendMessage(userMessage: string, history: ChatMessage[] = []): Promise<string> {
     const startTime = Date.now();
+    let wasSuccessful = false;
+    let usedFallback = false;
+    let contentTypeUsed: string | undefined;
     
     try {
       if (!history) history = [];
@@ -402,6 +408,7 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
         // Update conversation buffer
         this.updateConversationBuffer(userMessage, assistantResponse);
         
+        wasSuccessful = true;
         console.log(`⚡ Response time: ${Date.now() - startTime}ms`);
         return assistantResponse;
       }
@@ -426,6 +433,12 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
         // Update conversation buffer
         this.updateConversationBuffer(userMessage, cachedResponse);
         
+        wasSuccessful = true;
+        // Try to detect content type from cached response
+        if (cachedResponse.includes('product')) contentTypeUsed = 'products';
+        else if (cachedResponse.includes('policy')) contentTypeUsed = 'policies';
+        else if (cachedResponse.includes('FAQ')) contentTypeUsed = 'faqs';
+        
         console.log(`⚡ Response time: ${Date.now() - startTime}ms (CACHED)`);
         return cachedResponse;
       }
@@ -438,11 +451,17 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
         try {
           console.log('🧠 Using LangChain agent for content routing...');
           assistantResponse = await this.contentRouter.routeQuery(userMessage, history);
+          // Try to detect content type from router response
+          if (assistantResponse.includes('product')) contentTypeUsed = 'products';
+          else if (assistantResponse.includes('policy')) contentTypeUsed = 'policies';
+          else if (assistantResponse.includes('FAQ')) contentTypeUsed = 'faqs';
         } catch (error) {
           console.error('❌ Error in content router:', error);
+          usedFallback = true;
           assistantResponse = await this.fallbackContentSearch(userMessage, history);
         }
       } else {
+        usedFallback = true;
         assistantResponse = await this.fallbackContentSearch(userMessage, history);
       }
 
@@ -452,6 +471,7 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
           !assistantResponse.includes("couldn't find") &&
           !assistantResponse.includes("error")) {
         this.cache.set(cacheKey, assistantResponse, 2 * 60 * 1000);
+        wasSuccessful = true;
       }
       
       history.push({ role: 'assistant', content: assistantResponse });
@@ -473,12 +493,27 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
       history.push({ role: 'assistant', content: errorMessage });
       this.conversationHistory = [...history];
       return errorMessage;
+    } finally {
+      // Always track the query, even if it failed
+      const responseTime = Date.now() - startTime;
+      this.analyticsTracker.trackQuery(
+        userMessage,
+        responseTime,
+        wasSuccessful,
+        usedFallback,
+        contentTypeUsed,
+        this.sessionId
+      );
     }
   }
 
   async *sendMessageStream(userMessage: string, history: ChatMessage[] = []): AsyncGenerator<string> {
     const startTime = Date.now();
-    
+    let wasSuccessful = false;
+    let usedFallback = false;
+    let contentTypeUsed: string | undefined;
+    let fullResponse = '';
+
     try {
       if (!history) history = [];
       
@@ -498,7 +533,6 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
         
         const stream = await this.model.stream(generalContext);
         
-        let fullResponse = '';
         for await (const chunk of stream) {
           const chunkText = this.cleanResponse(chunk);
           if (chunkText) {
@@ -513,6 +547,7 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
         // Update conversation buffer
         this.updateConversationBuffer(userMessage, fullResponse);
         
+        wasSuccessful = true;
         console.log(`⚡ Stream response time: ${Date.now() - startTime}ms`);
         return;
       }
@@ -528,16 +563,33 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
       console.log('🔍 Content-related query - streaming response...');
 
       const finalResponse = await this.sendMessage(userMessage, history);
+      fullResponse = finalResponse;
       
       for (let i = 0; i < finalResponse.length; i++) {
         yield finalResponse[i];
         await new Promise(resolve => setTimeout(resolve, 10));
       }
 
+      wasSuccessful = true;
+      // Try to detect content type from response
+      if (finalResponse.includes('product')) contentTypeUsed = 'products';
+      else if (finalResponse.includes('policy')) contentTypeUsed = 'policies';
+      else if (finalResponse.includes('FAQ')) contentTypeUsed = 'faqs';
+
     } catch (error) {
       console.error('❌ Error in sendMessageStream:', error);
       const errorMessage = 'Sorry, I encountered an error. Please try again.';
       yield errorMessage;
+    } finally {
+      const responseTime = Date.now() - startTime;
+      this.analyticsTracker.trackQuery(
+        userMessage,
+        responseTime,
+        wasSuccessful,
+        usedFallback,
+        contentTypeUsed,
+        this.sessionId
+      );
     }
   }
 
@@ -706,6 +758,15 @@ INSTRUCTIONS:
 11. If the user refers to something mentioned earlier (like "this product"), use the conversation context to understand what they mean
 
 YOUR RESPONSE:`.trim();
+  }
+
+  // Analytics methods
+  getAnalyticsSnapshot() {
+    return this.analyticsTracker.getCurrentSnapshot();
+  }
+
+  getLiveMetrics() {
+    return this.analyticsTracker.getLiveMetrics();
   }
 
   getConversationHistory(): ChatMessage[] {
