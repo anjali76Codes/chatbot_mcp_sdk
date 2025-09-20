@@ -62,6 +62,10 @@ export class ContentstackChatAgent {
   private lastContentTypeUpdate: number = 0;
   private contentMapper: AutoContentMapper | null = null;
   private contentRouter: DynamicContentRouter | null = null;
+  
+  // Conversation buffer properties
+  private conversationBuffer: ChatMessage[] = [];
+  private maxBufferSize: number = 6; // Stores 3 user-assistant pairs
 
   constructor(config: ChatAgentConfig = {}) {
     this.config = config;
@@ -93,7 +97,7 @@ export class ContentstackChatAgent {
         if (!apiKey) throw new Error('OpenAI API key is required');
         return new ChatOpenAI({ 
           apiKey, 
-          modelName, // ✅ Correct for OpenAI
+          modelName,
           temperature,
           configuration: {
             baseURL: config.llm?.baseURL
@@ -104,7 +108,7 @@ export class ContentstackChatAgent {
         if (!apiKey) throw new Error('Anthropic API key is required');
         return new ChatAnthropic({ 
           apiKey, 
-          model: modelName, // ✅ Anthropic uses 'model' not 'modelName'
+          model: modelName,
           temperature 
         });
       
@@ -112,7 +116,7 @@ export class ContentstackChatAgent {
         if (!apiKey) throw new Error('Groq API key is required');
         return new ChatGroq({ 
           apiKey, 
-          model: modelName, // ✅ Groq uses 'modelName' (corrected)
+          model: modelName,
           temperature 
         });
       
@@ -121,7 +125,7 @@ export class ContentstackChatAgent {
         if (!apiKey) throw new Error('Google API key is required');
         return new ChatGoogleGenerativeAI({ 
           apiKey, 
-          model: modelName, // ✅ Google uses 'modelName' (corrected)
+          model: modelName,
           temperature 
         });
     }
@@ -236,17 +240,12 @@ export class ContentstackChatAgent {
   }
 
   private buildGeneralContext(history: ChatMessage[]): string {
-    const lastFewMessages = history.slice(-3);
+    const conversationContext = this.getConversationContext();
     
-    const historyContext = lastFewMessages
-        .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
-        .join('\n');
-
     return `
 You are a friendly and helpful AI assistant. Keep responses brief and conversational.
 
-CONVERSATION HISTORY:
-${historyContext}
+${conversationContext}
 
 INSTRUCTIONS:
 1. Respond naturally to general conversation
@@ -258,6 +257,7 @@ INSTRUCTIONS:
 7. Response must be under 50 words
 8. Don't mention that you can't help with content if it's a general conversation
 9. Use Indian currency format (₹ instead of $) if mentioning prices
+10. Maintain context from previous messages when appropriate
 
 YOUR RESPONSE:`.trim();
   }
@@ -322,17 +322,73 @@ YOUR RESPONSE:`.trim();
     return cleanedContent;
   }
 
+  // Conversation buffer methods
+  private updateConversationBuffer(userMessage: string, assistantResponse: string): void {
+    // Add new messages to buffer
+    this.conversationBuffer.push({ role: 'user', content: userMessage });
+    this.conversationBuffer.push({ role: 'assistant', content: assistantResponse });
+    
+    // Trim buffer if it exceeds max size
+    if (this.conversationBuffer.length > this.maxBufferSize) {
+      this.conversationBuffer = this.conversationBuffer.slice(-this.maxBufferSize);
+    }
+  }
+
+  private getConversationContext(): string {
+    if (this.conversationBuffer.length === 0) return '';
+    
+    return `CONVERSATION HISTORY:
+${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).join('\n')}`;
+  }
+
+  private resolveAmbiguousReference(userMessage: string): string {
+    const ambiguousPatterns = [
+      /(this|that|it)( product| item| one)?/i,
+      /the (product|item|one)( you mentioned| we discussed)?/i,
+      /(tell me|what about|more about) (it|that|this)/i,
+      /(how about|what is|details on) (that|this|it)/i
+    ];
+    
+    const isAmbiguous = ambiguousPatterns.some(pattern => pattern.test(userMessage));
+    
+    if (!isAmbiguous || this.conversationBuffer.length === 0) {
+      return userMessage;
+    }
+    
+    // Look for the most recent product mentioned in the conversation
+    const lastAssistantMessage = this.conversationBuffer
+      .filter(msg => msg.role === 'assistant')
+      .pop();
+    
+    if (lastAssistantMessage) {
+      // Extract product name from the last assistant response
+      const productMatch = lastAssistantMessage.content.match(/([A-Za-z][A-Za-z\s]+earrings|[A-Za-z][A-Za-z\s]+necklace|[A-Za-z][A-Za-z\s]+ring|[A-Za-z][A-Za-z\s]+bracelet|[A-Za-z][A-Za-z\s]+choker)/i);
+      
+      if (productMatch) {
+        const productName = productMatch[1];
+        console.log(`🔍 Resolved "this" to: ${productName}`);
+        return userMessage.replace(/(this|that|it)/i, productName);
+      }
+    }
+    
+    return userMessage;
+  }
+
   async sendMessage(userMessage: string, history: ChatMessage[] = []): Promise<string> {
     const startTime = Date.now();
     
     try {
       if (!history) history = [];
-      history.push({ role: 'user', content: userMessage });
+      
+      // Resolve ambiguous references first
+      const resolvedMessage = this.resolveAmbiguousReference(userMessage);
+      
+      history.push({ role: 'user', content: resolvedMessage });
       this.conversationHistory = [...history];
 
-      console.log(`👤 User: ${userMessage}`);
+      console.log(`👤 User: ${resolvedMessage}`);
 
-      const needsContent = await this.needsContentAccess(userMessage);
+      const needsContent = await this.needsContentAccess(resolvedMessage);
       
       if (!needsContent) {
         console.log('💬 General conversation - using LLM only');
@@ -342,6 +398,9 @@ YOUR RESPONSE:`.trim();
         
         history.push({ role: 'assistant', content: assistantResponse });
         this.conversationHistory = [...history];
+        
+        // Update conversation buffer
+        this.updateConversationBuffer(userMessage, assistantResponse);
         
         console.log(`⚡ Response time: ${Date.now() - startTime}ms`);
         return assistantResponse;
@@ -363,6 +422,9 @@ YOUR RESPONSE:`.trim();
         console.log('🎯 Cache hit - returning cached response');
         history.push({ role: 'assistant', content: cachedResponse });
         this.conversationHistory = [...history];
+        
+        // Update conversation buffer
+        this.updateConversationBuffer(userMessage, cachedResponse);
         
         console.log(`⚡ Response time: ${Date.now() - startTime}ms (CACHED)`);
         return cachedResponse;
@@ -395,6 +457,9 @@ YOUR RESPONSE:`.trim();
       history.push({ role: 'assistant', content: assistantResponse });
       this.conversationHistory = [...history];
 
+      // Update conversation buffer
+      this.updateConversationBuffer(userMessage, assistantResponse);
+
       if (history.length > 10) {
         history.splice(0, history.length - 10);
         this.conversationHistory = [...history];
@@ -416,12 +481,16 @@ YOUR RESPONSE:`.trim();
     
     try {
       if (!history) history = [];
-      history.push({ role: 'user', content: userMessage });
+      
+      // Resolve ambiguous references first
+      const resolvedMessage = this.resolveAmbiguousReference(userMessage);
+      
+      history.push({ role: 'user', content: resolvedMessage });
       this.conversationHistory = [...history];
 
-      console.log(`👤 User (stream): ${userMessage}`);
+      console.log(`👤 User (stream): ${resolvedMessage}`);
 
-      const needsContent = await this.needsContentAccess(userMessage);
+      const needsContent = await this.needsContentAccess(resolvedMessage);
       
       if (!needsContent) {
         console.log('💬 General conversation - using LLM only (stream)');
@@ -440,6 +509,9 @@ YOUR RESPONSE:`.trim();
         
         history.push({ role: 'assistant', content: fullResponse });
         this.conversationHistory = [...history];
+        
+        // Update conversation buffer
+        this.updateConversationBuffer(userMessage, fullResponse);
         
         console.log(`⚡ Stream response time: ${Date.now() - startTime}ms`);
         return;
@@ -607,18 +679,13 @@ YOUR RESPONSE:`.trim();
   }
 
   private buildConversationContext(contentstackData: string, queryType?: string, history: ChatMessage[] = []): string {
+    const conversationContext = this.getConversationContext();
     const effectiveHistory = history.length > 0 ? history : this.conversationHistory;
     
-    const historyContext = effectiveHistory
-        .slice(-3)
-        .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
-        .join('\n');
-
     return `
 You are a helpful AI assistant. Answer the user's question based on the content provided.
 
-CONVERSATION HISTORY:
-${historyContext}
+${conversationContext}
 
 CONTENT DATA:
 ${contentstackData}
@@ -636,6 +703,7 @@ INSTRUCTIONS:
 8. Use Indian currency format (₹ instead of $)
 9. For lists, use simple line breaks instead of bullet points
 10. Prices should be in Indian Rupees format (₹ symbol)
+11. If the user refers to something mentioned earlier (like "this product"), use the conversation context to understand what they mean
 
 YOUR RESPONSE:`.trim();
   }
@@ -646,8 +714,9 @@ YOUR RESPONSE:`.trim();
 
   clearConversationHistory(): void {
     this.conversationHistory = [];
+    this.conversationBuffer = [];
     this.cache.clear();
-    console.log('🗑️ Conversation history and cache cleared');
+    console.log('🗑️ Conversation history, buffer, and cache cleared');
   }
 
   async shutdown(): Promise<void> {

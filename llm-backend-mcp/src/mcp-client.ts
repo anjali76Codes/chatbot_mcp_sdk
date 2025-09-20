@@ -213,96 +213,215 @@ async searchContent(query: string, contentType: string, limit: number = 20): Pro
 
 
 
-// Add these methods to your existing MCP client
+// In mcp-client.ts - Update the smartSearchContent method
 async smartSearchContent(query: string, contentType: string, providerType: string = 'google'): Promise<string> {
-    const isGroq = providerType.toLowerCase().includes('groq');
-    
-    if (!isGroq) {
-        // For non-GROQ providers, use comprehensive search
-        return await this.searchContent(query, contentType, 20);
-    }
-    
-    // GROQ: Optimized multi-step search to conserve tokens
-    console.log('🔍 Using GROQ-optimized search strategy');
-    
-    const searchSteps = this.getSearchStrategyForGroq(query);
-    
-    for (const step of searchSteps) {
-        try {
-            console.log(`🔄 GROQ Step: "${step.query}" with limit ${step.limit}`);
-            const result = await this.searchContent(step.query, contentType, step.limit);
-            
-            if (this.isValidSearchResult(result, query)) {
-                console.log(`✅ GROQ found results in step ${step.step}`);
-                return result;
-            }
-            
-            // If we got results but they're not relevant, continue to next step
-            if (!result.includes('Unable to') && !result.includes('No content')) {
-                console.log(`⚠️ GROQ results not relevant, trying next step`);
-            }
-            
-        } catch (error: any) {
-            if (this.isTokenLimitError(error)) {
-                console.log('⚠️ GROQ token limit hit, trying next step with fewer tokens');
-                continue;
-            }
-            console.error('❌ Error in GROQ search step:', error);
+  const isGroq = providerType.toLowerCase().includes('groq');
+  const isGemini = providerType.toLowerCase().includes('google');
+  
+  if (isGemini) {
+    // Gemini can handle larger responses
+    return await this.searchContent(query, contentType, 25);
+  }
+  
+  if (isGroq) {
+    // Use the optimized GROQ search strategy
+    return await this.groqOptimizedSearch(query, contentType);
+  }
+  
+  // Default for other providers
+  return await this.searchContent(query, contentType, 20);
+}
+// In mcp-client.ts - Update groqOptimizedSearch method
+private async groqOptimizedSearch(query: string, contentType: string): Promise<string> {
+  console.log('🔍 Using GROQ-optimized search strategy');
+  
+  const searchSteps = this.getSearchStrategyForGroq(query);
+  
+  let bestResult = "No relevant results found";
+  let bestRelevanceScore = 0;
+  
+  for (const step of searchSteps) {
+    try {
+      console.log(`🔄 GROQ Step ${step.step}: "${step.query}" with limit ${step.limit}`);
+      const result = await this.searchContent(step.query, contentType, step.limit);
+      
+      if (this.isValidSearchResult(result, query)) {
+        console.log(`✅ GROQ found potentially relevant results in step ${step.step}`);
+        
+        // Calculate relevance score (simple heuristic)
+        const relevanceScore = this.calculateRelevanceScore(result, query);
+        console.log(`📊 Relevance score: ${relevanceScore}`);
+        
+        if (relevanceScore > bestRelevanceScore) {
+          bestResult = result;
+          bestRelevanceScore = relevanceScore;
         }
+        
+        // If we have a very good match, return immediately
+        if (relevanceScore > 0.7) {
+          console.log(`🎯 Excellent match found, returning results from step ${step.step}`);
+          return result;
+        }
+      } else {
+        console.log(`⚠️ GROQ results not relevant in step ${step.step}, trying next`);
+      }
+      
+    } catch (error: any) {
+      if (this.isTokenLimitError(error)) {
+        console.log('⚠️ GROQ token limit hit, trying next step with fewer tokens');
+        continue;
+      }
+      console.error('❌ Error in GROQ search step:', error);
     }
-    
-    return "No relevant results found with token-efficient search";
+  }
+  
+  return bestRelevanceScore > 0 ? bestResult : "No relevant results found with token-efficient search";
 }
 
-private getSearchStrategyForGroq(query: string): Array<{query: string, limit: number, step: number}> {
-    const keywords = this.extractKeywords(query);
-    const mainKeyword = this.getMainKeyword(query);
+// Add this helper method to calculate relevance score
+private calculateRelevanceScore(result: string, query: string): number {
+  try {
+    const data = JSON.parse(result);
+    if (data && data.entries && Array.isArray(data.entries)) {
+      const keywords = this.extractKeywords(query).split(' ');
+      let totalScore = 0;
+      
+      data.entries.forEach((entry: any) => {
+        const entryText = JSON.stringify(entry).toLowerCase();
+        keywords.forEach(keyword => {
+          if (keyword.length > 2 && entryText.includes(keyword.toLowerCase())) {
+            totalScore += 0.3; // Score for each keyword match
+          }
+        });
+        
+        // Bonus for exact title matches
+        if (entry.title && query.toLowerCase().includes(entry.title.toLowerCase())) {
+          totalScore += 0.5;
+        }
+      });
+      
+      return Math.min(1.0, totalScore / data.entries.length);
+    }
+  } catch (error) {
+    // Fallback: simple keyword counting
+    const lowerResult = result.toLowerCase();
+    const keywords = this.extractKeywords(query).split(' ');
+    const matches = keywords.filter(keyword => 
+      keyword.length > 2 && lowerResult.includes(keyword.toLowerCase())
+    ).length;
     
-    return [
-        // Step 1: Exact match with very low limit (most token-efficient)
-        { query: query, limit: 5, step: 1 },
-        
-        // Step 2: Keyword-based with moderate limit
-        { query: keywords, limit: 8, step: 2 },
-        
-        // Step 3: Main keyword only with slightly higher limit
-        { query: mainKeyword, limit: 10, step: 3 },
-        
-        // Step 4: Fallback with very specific filters if needed
-        { query: mainKeyword, limit: 12, step: 4 }
-    ];
+    return matches / keywords.length;
+  }
+  
+  return 0;
 }
 
+// In mcp-client.ts - Update extractKeywords method
 private extractKeywords(query: string): string {
-    const stopWords = new Set(['what', 'is', 'the', 'price', 'of', 'and', 'or', 'for', 'do', 'you', 'have', 'can', 'tell', 'me', 'about']);
-    
-    return query.split(' ')
-        .filter(word => word.length > 2)
-        .filter(word => !stopWords.has(word.toLowerCase()))
-        .slice(0, 3) // Max 3 keywords
-        .join(' ');
+  // Enhanced stop words list
+  const commonStopWords = new Set([
+    'what', 'is', 'the', 'price', 'of', 'and', 'or', 'for', 'do', 'you', 
+    'have', 'can', 'tell', 'me', 'about', 'which', 'collections', 'under',
+    'your', 'are', 'there', 'any', 'please', 'could', 'would', 'should',
+    'will', 'shall', 'might', 'may', 'must', 'can', 'could', 'would',
+    'how', 'much', 'many', 'where', 'when', 'why', 'who', 'does',
+    'show', 'list', 'give', 'find', 'looking', 'for', 'want', 'need'
+  ]);
+  
+  // Extract meaningful keywords with better filtering
+  const words = query.split(/\s+/)
+    .map(word => word.replace(/[^a-zA-Z0-9]/g, '').toLowerCase())
+    .filter(word => word.length > 3) // Longer words are more meaningful
+    .filter(word => !commonStopWords.has(word))
+    .filter((word, index, array) => array.indexOf(word) === index);
+  
+  return words.slice(0, 4).join(' ') || this.getMainKeyword(query);
 }
 
 private getMainKeyword(query: string): string {
-    const keywords = query.split(' ')
-        .filter(word => word.length > 3)
-        .filter(word => !['price', 'collection', 'product'].includes(word.toLowerCase()));
-    
-    return keywords[0] || query.split(' ')[0];
+  // Dynamic keyword extraction without hardcoded categories
+  const words = query.split(/\s+/)
+    .map(word => word.replace(/[^a-zA-Z0-9]/g, '').toLowerCase())
+    .filter(word => word.length > 3); // Focus on longer, more specific words
+  
+  // Return the most specific (longest) word, or first word as fallback
+  return words.sort((a, b) => b.length - a.length)[0] || words[0] || 'information';
 }
 
+
+
+// In mcp-client.ts - Update getSearchStrategyForGroq method
+private getSearchStrategyForGroq(query: string): Array<{query: string, limit: number, step: number}> {
+  const keywords = this.extractKeywords(query);
+  const mainKeyword = this.getMainKeyword(query);
+  
+  console.log(`🔍 Extracted keywords: "${keywords}", Main keyword: "${mainKeyword}"`);
+  
+  // More aggressive search strategy for better results
+  return [
+    // Step 1: Specific product search
+    { query: `"${mainKeyword}" product`, limit: 4, step: 1 },
+    
+    // Step 2: Broader category search
+    { query: keywords, limit: 6, step: 2 },
+    
+    // Step 3: Collection/type search
+    { query: `${mainKeyword} collection`, limit: 5, step: 3 },
+    
+    // Step 4: Fallback to general search
+    { query: mainKeyword, limit: 8, step: 4 },
+    
+    // Step 5: Very broad search as last resort
+    { query: "jewelry accessories", limit: 10, step: 5 }
+  ];
+}
+
+// In mcp-client.ts - Update the isValidSearchResult method
 private isValidSearchResult(result: string, originalQuery: string): boolean {
     if (!result || result.includes('Unable to') || result.includes('No content')) {
         return false;
     }
     
-    // Check if result contains at least one keyword from original query
+    // Parse the JSON response to check if it actually contains entries
+    try {
+        const data = JSON.parse(result);
+        if (data && data.entries && Array.isArray(data.entries)) {
+            // Check if we have actual entries with content
+            const hasValidEntries = data.entries.some((entry: any) => 
+                entry && (entry.title || entry.product_name || entry.name)
+            );
+            
+            if (!hasValidEntries) {
+                console.log('❌ No valid entries found in search results');
+                return false;
+            }
+            
+            // Additional relevance check - look for query keywords in entry titles
+            const keywords = this.extractKeywords(originalQuery).split(' ');
+            const hasRelevantEntries = data.entries.some((entry: any) => {
+                const entryText = JSON.stringify(entry).toLowerCase();
+                return keywords.some(keyword => 
+                    keyword.length > 2 && entryText.includes(keyword.toLowerCase())
+                );
+            });
+            
+            console.log(`🔍 Relevance check: ${hasRelevantEntries ? 'Relevant' : 'Not relevant'}`);
+            return hasRelevantEntries;
+        }
+    } catch (error) {
+        console.log('⚠️ Could not parse search results as JSON, using fallback validation');
+    }
+    
+    // Fallback: Check if result contains at least one keyword from original query
     const keywords = this.extractKeywords(originalQuery).split(' ');
     const lowerResult = result.toLowerCase();
     
-    return keywords.some(keyword => 
+    const hasRelevantContent = keywords.some(keyword => 
         keyword.length > 2 && lowerResult.includes(keyword.toLowerCase())
     );
+    
+    console.log(`🔍 Fallback relevance: ${hasRelevantContent ? 'Relevant' : 'Not relevant'}`);
+    return hasRelevantContent;
 }
 
 private isTokenLimitError(error: any): boolean {
