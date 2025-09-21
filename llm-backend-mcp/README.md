@@ -1,127 +1,280 @@
-npm i --save-dev @types/express
 
+# LLM Backend with Model Context Protocol (MCP)
 
+A powerful backend service that connects Large Language Models (LLMs) with Contentstack content via the Model Context Protocol. This service enables intelligent chat agents that can query and respond with relevant content from your Contentstack stack.
 
+## 🚀 Quick Start
 
+### Prerequisites
 
-### Prerequisites (Must be installed first)
+- Node.js 18+ installed
+- Contentstack account with API credentials
+- LLM API key (Google, OpenAI, Anthropic, or Groq)
 
-1.  **Node.js:** Ensure you have Node.js (v18 or higher) installed.
-2.  **Contentstack Account:** You need a Contentstack account with a stack, some content (entries, assets), and your API credentials.
+### Installation
 
----
+1. **Navigate to the backend directory**
+   ```bash
+   cd llm-backend-mcp
+   ```
 
-### Step 1: Environment Setup
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-Your code requires environment variables. You need to create a `.env` file in your project's root directory.
+3. **Set up environment variables**
+   Create a `.env` file in the root directory:
+   ```env
+   PORT=3000
+   CONTENTSTACK_API_KEY=your_api_key_here
+   CONTENTSTACK_MANAGEMENT_TOKEN=your_management_token_here
+   CONTENTSTACK_ENVIRONMENT=production
+   CONTENTSTACK_REGION=us
+   LLM_PROVIDER=google
+   LLM_API_KEY=your_llm_api_key_here
+   LLM_MODEL=gemini-2.5-flash
+   LLM_TEMPERATURE=0.7
+   ```
 
-1.  Create a file named `.env`
-2.  Open it and add your credentials in this exact format:
+4. **Start the server**
+   ```bash
+   npm run dev
+   ```
+   Server runs at: `http://localhost:3000`
 
-```bash
-# Get these from your Contentstack stack settings
-CONTENTSTACK_API_KEY="your_api_key_here"
-CONTENTSTACK_MANAGEMENT_TOKEN="your_management_token_here"
+5. **Verify the server is running**
+   ```bash
+   curl http://localhost:3000/health
+   ```
 
-# Get this from Google AI Studio (https://aistudio.google.com/)
-GOOGLE_API_KEY="your_google_gemini_api_key_here"
+## 📁 Project Structure
+
 ```
-**How to get these values:**
-*   `CONTENTSTACK_API_KEY` & `CONTENTSTACK_MANAGEMENT_TOKEN`: Go to your Contentstack stack -> **Settings** -> **Stack** -> **API Keys**.
-*   `GOOGLE_API_KEY`: Visit [Google AI Studio](https://aistudio.google.com/), create an API key for the Gemini API.
-
----
-
-### Step 2: Install Dependencies
-
-Open your terminal, navigate to your project folder, and run:
-
-```bash
-npm install
+llm-backend-mcp/
+├── src/
+│   ├── types/
+│   │   ├── analytics.ts          # Analytics data types
+│   │   └── contentstack.ts       # Contentstack interfaces
+│   ├── analytics-tracker.ts      # Analytics tracking system
+│   ├── chat-agent.ts             # Main chat agent logic
+│   ├── dynamic-content-router.ts # Content routing system
+│   ├── index.ts                  # Application entry point
+│   ├── mcp-client.ts             # Contentstack MCP client
+│   ├── server.ts                 # Express server setup
+│   └── test-analytics.ts         # Analytics testing utilities
+├── cache/
+│   └── content_index.json        # Cached content index
+├── package.json
+└── tsconfig.json
 ```
-This will install all the packages listed in your `package.json` (like `@langchain/google-genai`, `@modelcontextprotocol/sdk`, etc.).
 
----
+## 🔌 API Endpoints
 
-### Step 3: Build the Project
+### Chat Endpoints
 
-Your code is written in TypeScript and needs to be compiled to JavaScript to run. Run the build command:
+#### POST `/v1/chat`
+Standard chat endpoint (non-streaming)
+
+**Request:**
+```json
+{
+  "message": "What tours are available for Italy?"
+}
+```
+
+**Response:**
+```json
+{
+  "response": "Based on our content, we have several Italy tours available...",
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "responseTime": 1200
+}
+```
+
+#### POST `/v1/chat/stream`
+Streaming chat endpoint for real-time responses
+
+**Request:**
+```json
+{
+  "message": "What tours are available for Italy?"
+}
+```
+
+**Response (SSE Stream):**
+```
+data: {"chunk": "Based"}
+data: {"chunk": " on"}
+data: {"chunk": " our"}
+...
+data: [DONE]
+```
+
+### Configuration Endpoint
+
+#### GET `/v1/config`
+Get current server configuration
+
+**Response:**
+```json
+{
+  "contentstack": {
+    "apiKey": "your_api_key",
+    "managementToken": "your_token",
+    "environment": "production",
+    "region": "us"
+  },
+  "llm": {
+    "provider": "google",
+    "model": "gemini-2.5-flash",
+    "temperature": 0.7
+  }
+}
+```
+
+### Analytics Endpoints
+
+#### GET `/api/analytics/overview`
+Get comprehensive analytics overview
+
+**Response:**
+```json
+{
+  "totalQueries": 150,
+  "averageResponseTime": 1.2,
+  "successRate": 0.95,
+  "popularQueries": [...],
+  "contentTypePerformance": [...]
+}
+```
+
+#### GET `/api/analytics/live-metrics`
+Get real-time metrics
+
+**Response:**
+```json
+{
+  "queriesPerMinute": 12,
+  "activeSessions": 8,
+  "errorRate": 0.02,
+  "uptime": "5h 23m"
+}
+```
+
+#### GET `/api/analytics/popular-queries`
+Get most frequent user queries
+
+#### GET `/api/analytics/content-performance`
+Get content type performance metrics
+
+#### GET `/api/analytics/health`
+Get analytics system health status
+
+### Utility Endpoints
+
+#### GET `/health`
+Health check endpoint
+
+**Response:**
+```json
+{
+  "status": "OK",
+  "chatAgentInitialized": true,
+  "timestamp": "2024-01-15T10:30:00.000Z"
+}
+```
+
+#### POST `/v1/clear-cache`
+Clear conversation cache
+
+**Response:**
+```json
+{
+  "status": "Cache cleared"
+}
+```
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `PORT` | Server port | No | `3000` |
+| `CONTENTSTACK_API_KEY` | Contentstack API Key | Yes | - |
+| `CONTENTSTACK_MANAGEMENT_TOKEN` | Contentstack Management Token | Yes | - |
+| `CONTENTSTACK_ENVIRONMENT` | Contentstack Environment | Yes | - |
+| `CONTENTSTACK_REGION` | Contentstack Region (us/eu/azure-na) | Yes | `us` |
+| `LLM_PROVIDER` | LLM Provider (google/openai/anthropic/groq) | Yes | `google` |
+| `LLM_API_KEY` | LLM API Key | Yes | - |
+| `LLM_MODEL` | LLM Model Name | No | Provider-specific default |
+| `LLM_TEMPERATURE` | Creativity level (0.0-1.0) | No | `0.7` |
+
+### Supported LLM Providers
+
+- **Google**: Gemini models (gemini-2.5-flash, gemini-pro)
+- **OpenAI**: GPT models (gpt-4o-mini, gpt-4)
+- **Anthropic**: Claude models (claude-3-haiku, claude-3-sonnet)
+- **Groq**: Llama models (llama-3.1-8b-instant)
+
+## 🔧 How It Works
+
+1. **User Query Processing**: Incoming messages are analyzed for intent and entities
+2. **Content Retrieval**: Relevant content is fetched from Contentstack via MCP using management token
+3. **LLM Integration**: The retrieved content is sent to the LLM for response generation
+4. **Response Streaming**: Responses are streamed back to the client in real-time
+5. **Analytics Tracking**: All interactions are tracked for insights and improvements
+
+## 📊 Analytics Features
+
+The backend includes comprehensive analytics tracking:
+
+- Conversation metrics and statistics
+- Response time monitoring
+- Popular query tracking
+- Content retrieval performance
+- Error rate tracking
+- Real-time live metrics
+
+## 🚀 Deployment
+
+### Build for Production
 
 ```bash
 npm run build
 ```
-*   This command uses `tsc` (TypeScript Compiler) to convert your `.ts` files in the `src/` directory into `.js` files in a `dist/` directory.
-*   If you don't have a `build` script in your `package.json`, add it:
-    ```json
-    "scripts": {
-      "build": "tsc",
-      "start": "node dist/index.js"
-    }
-    ```
 
----
-
-### Step 4: Run the Chat Agent
-
-After a successful build, you can start your application:
+### Start Production Server
 
 ```bash
 npm start
 ```
-**What to expect:**
-1.  The script will first check for the environment variables.
-2.  You will see logs like `"🚀 Starting Contentstack Chat Agent..."` and `"🤖 Initializing Chat Agent..."`.
-3.  It will initialize the MCP client and connect to Contentstack. You should see: `"✅ MCP Client connected successfully"` and a list of `"🛠️ Available MCP Tools"`.
-4.  Finally, you will see the prompt: `💬 Chat Agent is ready! Type your questions below.`
 
----
 
-### Step 5: Testing Your Agent (Detailed Guide)
 
-Now you can have a conversation with your Contentstack stack. Here are specific test cases to try:
+## 🆘 Troubleshooting
 
-#### **Test Case 1: General Chat (No MCP Tool)**
-**You:** `Hello!`
-**Expected Result:** The LLM (Gemini) will generate a friendly greeting response without calling any Contentstack tools. You'll see no `🔍 Searching...` logs.
+### Common Issues
 
-#### **Test Case 2: Fetching Content Types**
-**You:** `Show me all content types`
-**Expected Result:**
-1.  You'll see a log: `🔍 Getting content types...`
-2.  The MCP Client will call the `get_all_content_types` tool.
-3.  The raw JSON result from Contentstack will be sent to Gemini.
-4.  Gemini will summarize the list of content types in a friendly way.
-**This tests your `else if (cleaned.includes('content types'))` routing logic.**
+1. **Connection refused errors**
+   - Verify Contentstack API credentials
+   - Check management token permissions
 
-#### **Test Case 3: Fetching Assets**
-**You:** `What assets do you have?`
-**Expected Result:**
-1.  You'll see a log: `🔍 Searching for assets...`
-2.  The MCP Client will call the `get_all_assets` tool.
-3.  The raw JSON result for assets will be sent to Gemini.
-4.  Gemini will describe the assets conversationally (e.g., "You have 5 images and 2 PDF documents...").
-**This tests your `if (cleaned.includes('assets'))` routing logic.**
+2. **Content not found**
+   - Ensure content types exist in Contentstack
+   - Verify environment configuration
 
-#### **Test Case 4: Fetching Entries (Most Important Test)**
-**You:** `Show me all page entries`
-**Expected Result:**
-1.  You'll see a log: `🔍 Searching for entries...`
-2.  The MCP Client will call the `get_all_entries` tool for the `page` content type.
-3.  The raw JSON entries from your `page` content type will be sent to Gemini.
-4.  Gemini will summarize the pages, likely listing their titles and main content.
-**This tests the core functionality of retrieving and presenting managed content.**
+3. **LLM API errors**
+   - Check API key validity
+   - Verify quota limits
 
-#### **Test Case 5: Testing the Clear Command**
-**You:** `clear`
-**Expected Result:** The conversation history stored in your agent's memory will be wiped clean. You'll see a log: `🗑️ Conversation history cleared`. This is useful for testing memory-dependent conversations.
+### Getting Help
 
-#### **Test Case 6: Exit the Application**
-**You:** `exit` or `quit`
-**Expected Result:** The application will shut down gracefully, disconnecting the MCP client and closing the readline interface. You'll see `👋 Goodbye!`.
+- Check server logs for detailed error messages
+- Verify all environment variables are set correctly
+- Ensure Contentstack content is published and accessible
 
-### Summary of Commands:
+## 📄 License
 
-1.  **Setup:** `npm install`
-2.  **Build:** `npm run build`
-3.  **Run:** `npm start`
-4.  **Test:** Use the test cases above in the running CLI.
+This project is licensed under the MIT License.
