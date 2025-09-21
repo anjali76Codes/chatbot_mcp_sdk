@@ -1,6 +1,6 @@
 {
   "name": "angupta-chat-sdk",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "A plug-and-play SDK for embedding AI chat agents powered by Contentstack",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

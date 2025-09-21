@@ -33,7 +33,7 @@ A lightweight, customizable React SDK for embedding AI-powered chat agents in yo
 ## Installation
 
 ```bash
-npm install angupta-chat-sdk react react-icons
+npm install angupta-chat-sdk 
 ```
 
 ### Peer Dependencies

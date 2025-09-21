@@ -22,6 +22,15 @@
         "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
         "commitMessage": "Triggered By File Upload",
         "__typename": "Deployment"
+      },
+      {
+        "uid": "68cefe256892cc2adc9131b0",
+        "status": "QUEUED",
+        "createdAt": "2025-09-20T19:19:01.352Z",
+        "updatedAt": "2025-09-20T19:19:01.352Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
       }
     ]
   }
