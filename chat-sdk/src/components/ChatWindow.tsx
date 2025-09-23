@@ -423,12 +423,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 )}
               </button>
             </div>
-            {streaming && (
+            {/* {streaming && (
               <div className="text-xs text-amber-600 mt-2 text-center flex items-center justify-center font-medium">
                 <span className="inline-block w-2 h-2 bg-amber-500 rounded-full mr-1 animate-pulse"></span>
                 Streaming responses enabled
               </div>
-            )}
+            )} */}
           </form>
         </div>
       )}

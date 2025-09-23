@@ -35,6 +35,12 @@ export interface ChatAgentConfig {
     temperature?: number;
     baseURL?: string;
   };
+
+  persistence?: {
+    sessionId?: string;
+    sessionsDir?: string;
+    ttl?: number; // Time to live in milliseconds
+  };
 }
 
 export type LLMProvider = 'google' | 'openai' | 'anthropic' | 'groq';

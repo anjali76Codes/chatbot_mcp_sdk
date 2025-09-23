@@ -1,12 +1,11 @@
 // src/App.tsx
 import { Routes, Route } from 'react-router-dom';
-import { ChatWindow } from 'angupta-chat-sdk';
 import { HomePage } from './pages/HomePage'
 import { FAQsPage } from './pages/FAQsPage'
 import { PoliciesPage } from './pages/PoliciesPage'
 import { ShopPage } from './pages/ShopPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
-
+import { ChatWindow } from 'angupta-chat-sdk';
 
 function App() {
   return (
@@ -19,16 +18,15 @@ function App() {
         <Route path="/analytics" element={<AnalyticsPage/>}/>
       </Routes>
 
-      {/* Floating Chat Window - appears on all pages */}
+  {/* Floating Chat Window - appears on all pages */}
       <div className="fixed bottom-6 right-6 z-50">
         <ChatWindow 
           apiBaseUrl={import.meta.env.VITE_API_BASE_URL}
-          streaming={true}
           title="Jewelry Assistant"
           position="bottom-right"
-        
         />
       </div>
+     
 
       {/* Footer - appears on all pages */}
       <footer className="bg-[#FDEBD0] text-black py-12 mt-20">

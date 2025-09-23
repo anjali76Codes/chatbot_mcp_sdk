@@ -9,18 +9,29 @@ import { DynamicContentRouter } from './dynamic-content-router.js';
 import { ChatAgentConfig } from './types/contentstack.js';
 import { AnalyticsTracker } from './analytics-tracker.js';
 import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs';
+import * as path from 'path';
 
 dotenv.config();
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  timestamp?: number;
 }
 
 interface CacheItem {
   data: any;
   timestamp: number;
   expires: number;
+}
+
+interface PersistentSession {
+  sessionId: string;
+  conversationHistory: ChatMessage[];
+  conversationBuffer: ChatMessage[];
+  createdAt: number;
+  lastAccessed: number;
 }
 
 class ResponseCache {
@@ -52,10 +63,121 @@ class ResponseCache {
   }
 }
 
+class PersistentSessionManager {
+  private sessions = new Map<string, PersistentSession>();
+  private sessionsDir: string;
+  private sessionTTL: number = 24 * 60 * 60 * 1000; // 24 hours
+
+  constructor(sessionsDir: string = './sessions') {
+    this.sessionsDir = sessionsDir;
+    this.ensureSessionsDir();
+    this.loadSessions();
+  }
+
+  private ensureSessionsDir(): void {
+    if (!fs.existsSync(this.sessionsDir)) {
+      fs.mkdirSync(this.sessionsDir, { recursive: true });
+    }
+  }
+
+  private getSessionFilePath(sessionId: string): string {
+    return path.join(this.sessionsDir, `${sessionId}.json`);
+  }
+
+  private loadSessions(): void {
+    try {
+      const files = fs.readdirSync(this.sessionsDir);
+      
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          const sessionId = file.replace('.json', '');
+          const filePath = path.join(this.sessionsDir, file);
+          
+          try {
+            const data = fs.readFileSync(filePath, 'utf8');
+            const session: PersistentSession = JSON.parse(data);
+            
+            // Check if session is expired
+            if (Date.now() - session.lastAccessed > this.sessionTTL) {
+              fs.unlinkSync(filePath);
+              continue;
+            }
+            
+            this.sessions.set(sessionId, session);
+          } catch (error) {
+            console.error(`Error loading session ${sessionId}:`, error);
+          }
+        }
+      }
+      
+      console.log(`✅ Loaded ${this.sessions.size} persistent sessions`);
+    } catch (error) {
+      console.error('Error loading sessions:', error);
+    }
+  }
+
+  getSession(sessionId: string): PersistentSession | null {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.lastAccessed = Date.now();
+      this.saveSession(session);
+    }
+    return session || null;
+  }
+
+  createSession(sessionId: string): PersistentSession {
+    const session: PersistentSession = {
+      sessionId,
+      conversationHistory: [],
+      conversationBuffer: [],
+      createdAt: Date.now(),
+      lastAccessed: Date.now()
+    };
+    
+    this.sessions.set(sessionId, session);
+    this.saveSession(session);
+    return session;
+  }
+
+  updateSession(sessionId: string, updates: Partial<PersistentSession>): void {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      Object.assign(session, updates);
+      session.lastAccessed = Date.now();
+      this.saveSession(session);
+    }
+  }
+
+  private saveSession(session: PersistentSession): void {
+    try {
+      const filePath = this.getSessionFilePath(session.sessionId);
+      fs.writeFileSync(filePath, JSON.stringify(session, null, 2));
+    } catch (error) {
+      console.error(`Error saving session ${session.sessionId}:`, error);
+    }
+  }
+
+  cleanupExpiredSessions(): void {
+    const now = Date.now();
+    for (const [sessionId, session] of this.sessions.entries()) {
+      if (now - session.lastAccessed > this.sessionTTL) {
+        try {
+          const filePath = this.getSessionFilePath(sessionId);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+          this.sessions.delete(sessionId);
+        } catch (error) {
+          console.error(`Error cleaning up session ${sessionId}:`, error);
+        }
+      }
+    }
+  }
+}
+
 export class ContentstackChatAgent {
   private model: BaseChatModel;
   private mcpClient: ContentstackMCPClient | null = null;
-  private conversationHistory: ChatMessage[] = [];
   private config: ChatAgentConfig;
   private isMCPInitialized: boolean = false;
   private cache: ResponseCache;
@@ -63,17 +185,23 @@ export class ContentstackChatAgent {
   private lastContentTypeUpdate: number = 0;
   private contentRouter: DynamicContentRouter | null = null;
   private analyticsTracker: AnalyticsTracker;
-  private sessionId: string;
+  private sessionManager: PersistentSessionManager;
   
-  // Conversation buffer properties
+  // Current session properties
+  private sessionId: string;
+  private conversationHistory: ChatMessage[] = [];
   private conversationBuffer: ChatMessage[] = [];
-  private maxBufferSize: number = 6; // Stores 3 user-assistant pairs
+  private maxBufferSize: number = 6;
 
   constructor(config: ChatAgentConfig = {}) {
     this.config = config;
     this.cache = new ResponseCache();
     this.analyticsTracker = new AnalyticsTracker();
-    this.sessionId = uuidv4();
+    this.sessionManager = new PersistentSessionManager(config.persistence?.sessionsDir);
+    
+    // Initialize session
+    this.sessionId = config.persistence?.sessionId || uuidv4();
+    this.initializeSession();
     
     // Initialize the model based on provider
     this.model = this.initializeModel(config);
@@ -87,11 +215,32 @@ export class ContentstackChatAgent {
       });
     }
 
-    // Set up periodic analytics snapshot saving
+    // Set up periodic cleanup
     setInterval(() => {
       this.analyticsTracker.saveSnapshot();
       this.analyticsTracker.cleanupSessions();
-    }, 60000); // Save every minute
+      this.sessionManager.cleanupExpiredSessions();
+    }, 60000);
+  }
+
+  private initializeSession(): void {
+    const existingSession = this.sessionManager.getSession(this.sessionId);
+    
+    if (existingSession) {
+      this.conversationHistory = existingSession.conversationHistory;
+      this.conversationBuffer = existingSession.conversationBuffer;
+      console.log(`✅ Loaded existing session: ${this.sessionId} (${this.conversationHistory.length} messages)`);
+    } else {
+      this.sessionManager.createSession(this.sessionId);
+      console.log(`✅ Created new session: ${this.sessionId}`);
+    }
+  }
+
+  private saveSessionState(): void {
+    this.sessionManager.updateSession(this.sessionId, {
+      conversationHistory: this.conversationHistory,
+      conversationBuffer: this.conversationBuffer
+    });
   }
 
   private initializeModel(config: ChatAgentConfig): BaseChatModel {
@@ -328,13 +477,23 @@ YOUR RESPONSE:`.trim();
   // Conversation buffer methods
   private updateConversationBuffer(userMessage: string, assistantResponse: string): void {
     // Add new messages to buffer
-    this.conversationBuffer.push({ role: 'user', content: userMessage });
-    this.conversationBuffer.push({ role: 'assistant', content: assistantResponse });
+    this.conversationBuffer.push({ 
+      role: 'user', 
+      content: userMessage,
+      timestamp: Date.now()
+    });
+    this.conversationBuffer.push({ 
+      role: 'assistant', 
+      content: assistantResponse,
+      timestamp: Date.now()
+    });
     
     // Trim buffer if it exceeds max size
     if (this.conversationBuffer.length > this.maxBufferSize) {
       this.conversationBuffer = this.conversationBuffer.slice(-this.maxBufferSize);
     }
+    
+    this.saveSessionState();
   }
 
   private getConversationContext(): string {
@@ -349,7 +508,8 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
       /(this|that|it)( product| item| one)?/i,
       /the (product|item|one)( you mentioned| we discussed)?/i,
       /(tell me|what about|more about) (it|that|this)/i,
-      /(how about|what is|details on) (that|this|it)/i
+      /(how about|what is|details on) (that|this|it)/i,
+      /(remind me|can you remind me|tell me again|what was that) (about|of)/i
     ];
     
     const isAmbiguous = ambiguousPatterns.some(pattern => pattern.test(userMessage));
@@ -358,19 +518,26 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
       return userMessage;
     }
     
-    // Look for the most recent product mentioned in the conversation
+    // Look for the most recent specific content mentioned in the conversation
     const lastAssistantMessage = this.conversationBuffer
       .filter(msg => msg.role === 'assistant')
       .pop();
     
     if (lastAssistantMessage) {
-      // Extract product name from the last assistant response
-      const productMatch = lastAssistantMessage.content.match(/([A-Zaza-z][A-Za-z\s]+earrings|[A-Za-z][A-Za-z\s]+necklace|[A-Za-z][A-Za-z\s]+ring|[A-Za-z][A-Za-z\s]+bracelet|[A-Za-z][A-Za-z\s]+choker)/i);
+      // Extract specific topics from the last assistant response
+      const topicPatterns = [
+        /(shipping policy|return policy|warranty policy|delivery policy)/i,
+        /([A-Za-z][A-Za-z\s]+earrings|[A-Za-z][A-Za-z\s]+necklace|[A-Za-z][A-Za-z\s]+ring|[A-Za-z][A-Za-z\s]+bracelet|[A-Za-z][A-Za-z\s]+choker)/i,
+        /(policy|product|item|collection|delivery|shipping|return|warranty)/i
+      ];
       
-      if (productMatch) {
-        const productName = productMatch[1];
-        console.log(`🔍 Resolved "this" to: ${productName}`);
-        return userMessage.replace(/(this|that|it)/i, productName);
+      for (const pattern of topicPatterns) {
+        const match = lastAssistantMessage.content.match(pattern);
+        if (match) {
+          const topic = match[1] || match[0];
+          console.log(`🔍 Resolved ambiguous reference to: ${topic}`);
+          return userMessage.replace(/(this|that|it)/i, topic).replace(/(the )?(policy|product|item)/i, topic);
+        }
       }
     }
     
@@ -384,12 +551,19 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
     let contentTypeUsed: string | undefined;
     
     try {
-      if (!history) history = [];
+      // Use persistent history if no explicit history provided
+      if (history.length === 0) {
+        history = [...this.conversationHistory];
+      }
       
       // Resolve ambiguous references first
       const resolvedMessage = this.resolveAmbiguousReference(userMessage);
       
-      history.push({ role: 'user', content: resolvedMessage });
+      history.push({ 
+        role: 'user', 
+        content: resolvedMessage,
+        timestamp: Date.now()
+      });
       this.conversationHistory = [...history];
 
       console.log(`👤 User: ${resolvedMessage}`);
@@ -402,10 +576,14 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
         const response = await this.model.invoke(generalContext);
         const assistantResponse = this.cleanResponse(response);
         
-        history.push({ role: 'assistant', content: assistantResponse });
+        history.push({ 
+          role: 'assistant', 
+          content: assistantResponse,
+          timestamp: Date.now()
+        });
         this.conversationHistory = [...history];
         
-        // Update conversation buffer
+        // Update conversation buffer and save session
         this.updateConversationBuffer(userMessage, assistantResponse);
         
         wasSuccessful = true;
@@ -415,8 +593,13 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
 
       if (!this.mcpClient) {
         const noMCPResponse = "I can help with general questions, but content access is not configured. Please check your Contentstack settings.";
-        history.push({ role: 'assistant', content: noMCPResponse });
+        history.push({ 
+          role: 'assistant', 
+          content: noMCPResponse,
+          timestamp: Date.now()
+        });
         this.conversationHistory = [...history];
+        this.saveSessionState();
         return noMCPResponse;
       }
 
@@ -427,10 +610,14 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
       
       if (cachedResponse) {
         console.log('🎯 Cache hit - returning cached response');
-        history.push({ role: 'assistant', content: cachedResponse });
+        history.push({ 
+          role: 'assistant', 
+          content: cachedResponse,
+          timestamp: Date.now()
+        });
         this.conversationHistory = [...history];
         
-        // Update conversation buffer
+        // Update conversation buffer and save session
         this.updateConversationBuffer(userMessage, cachedResponse);
         
         wasSuccessful = true;
@@ -474,15 +661,21 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
         wasSuccessful = true;
       }
       
-      history.push({ role: 'assistant', content: assistantResponse });
+      history.push({ 
+        role: 'assistant', 
+        content: assistantResponse,
+        timestamp: Date.now()
+      });
       this.conversationHistory = [...history];
 
-      // Update conversation buffer
+      // Update conversation buffer and save session
       this.updateConversationBuffer(userMessage, assistantResponse);
 
-      if (history.length > 10) {
-        history.splice(0, history.length - 10);
+      // Keep only last 20 messages in history to prevent memory issues
+      if (history.length > 20) {
+        history.splice(0, history.length - 20);
         this.conversationHistory = [...history];
+        this.saveSessionState();
       }
 
       console.log(`⚡ Response time: ${Date.now() - startTime}ms`);
@@ -490,8 +683,13 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
     } catch (error) {
       console.error('❌ Error in sendMessage:', error);
       const errorMessage = 'Sorry, I encountered an error. Please try again.';
-      history.push({ role: 'assistant', content: errorMessage });
+      history.push({ 
+        role: 'assistant', 
+        content: errorMessage,
+        timestamp: Date.now()
+      });
       this.conversationHistory = [...history];
+      this.saveSessionState();
       return errorMessage;
     } finally {
       // Always track the query, even if it failed
@@ -515,12 +713,19 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
     let fullResponse = '';
 
     try {
-      if (!history) history = [];
+      // Use persistent history if no explicit history provided
+      if (history.length === 0) {
+        history = [...this.conversationHistory];
+      }
       
       // Resolve ambiguous references first
       const resolvedMessage = this.resolveAmbiguousReference(userMessage);
       
-      history.push({ role: 'user', content: resolvedMessage });
+      history.push({ 
+        role: 'user', 
+        content: resolvedMessage,
+        timestamp: Date.now()
+      });
       this.conversationHistory = [...history];
 
       console.log(`👤 User (stream): ${resolvedMessage}`);
@@ -541,10 +746,14 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
           }
         }
         
-        history.push({ role: 'assistant', content: fullResponse });
+        history.push({ 
+          role: 'assistant', 
+          content: fullResponse,
+          timestamp: Date.now()
+        });
         this.conversationHistory = [...history];
         
-        // Update conversation buffer
+        // Update conversation buffer and save session
         this.updateConversationBuffer(userMessage, fullResponse);
         
         wasSuccessful = true;
@@ -555,8 +764,13 @@ ${this.conversationBuffer.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`
       if (!this.mcpClient) {
         const noMCPResponse = "I can help with general questions, but content access is not configured. Please check your Contentstack settings.";
         yield noMCPResponse;
-        history.push({ role: 'assistant', content: noMCPResponse });
+        history.push({ 
+          role: 'assistant', 
+          content: noMCPResponse,
+          timestamp: Date.now()
+        });
         this.conversationHistory = [...history];
+        this.saveSessionState();
         return;
       }
 
@@ -773,10 +987,15 @@ YOUR RESPONSE:`.trim();
     return [...this.conversationHistory];
   }
 
+  getSessionId(): string {
+    return this.sessionId;
+  }
+
   clearConversationHistory(): void {
     this.conversationHistory = [];
     this.conversationBuffer = [];
     this.cache.clear();
+    this.saveSessionState();
     console.log('🗑️ Conversation history, buffer, and cache cleared');
   }
 
@@ -784,6 +1003,7 @@ YOUR RESPONSE:`.trim();
     if (this.mcpClient && this.isMCPInitialized) {
       await this.mcpClient.disconnect();
     }
+    this.saveSessionState();
     console.log('🔌 Chat Agent shutdown');
   }
 }

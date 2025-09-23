@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 .env
+.cs-launch.json
 
 # Editor directories and files
 .vscode/*

@@ -31,6 +31,115 @@
         "commitMessage": "Triggered By File Upload",
         "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
         "__typename": "Deployment"
+      },
+      {
+        "uid": "68d02ed96892cc2adc9145f5",
+        "status": "QUEUED",
+        "createdAt": "2025-09-21T16:59:05.794Z",
+        "updatedAt": "2025-09-21T16:59:05.794Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
+      },
+      {
+        "uid": "68d030406892cc2adc914616",
+        "status": "QUEUED",
+        "createdAt": "2025-09-21T17:05:04.932Z",
+        "updatedAt": "2025-09-21T17:05:04.932Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
+      },
+      {
+        "uid": "68d041ac6892cc2adc914704",
+        "status": "QUEUED",
+        "createdAt": "2025-09-21T18:19:24.796Z",
+        "updatedAt": "2025-09-21T18:19:24.796Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
+      },
+      {
+        "uid": "68d0d27f98545998797f32e9",
+        "status": "QUEUED",
+        "createdAt": "2025-09-22T04:37:19.864Z",
+        "updatedAt": "2025-09-22T04:37:19.864Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
+      },
+      {
+        "uid": "68d0d38966b346fc80995daf",
+        "status": "QUEUED",
+        "createdAt": "2025-09-22T04:41:45.937Z",
+        "updatedAt": "2025-09-22T04:41:45.937Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
+      },
+      {
+        "uid": "68d0d5c998545998797f3325",
+        "status": "QUEUED",
+        "createdAt": "2025-09-22T04:51:21.605Z",
+        "updatedAt": "2025-09-22T04:51:21.605Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
+      },
+      {
+        "uid": "68d12e396892cc2adc915621",
+        "status": "QUEUED",
+        "createdAt": "2025-09-22T11:08:41.992Z",
+        "updatedAt": "2025-09-22T11:08:41.992Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
+      },
+      {
+        "uid": "68d1362398545998797f3daf",
+        "status": "QUEUED",
+        "createdAt": "2025-09-22T11:42:27.470Z",
+        "updatedAt": "2025-09-22T11:42:27.470Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
+      },
+      {
+        "uid": "68d13908d0a8e8f3f7636c00",
+        "status": "QUEUED",
+        "createdAt": "2025-09-22T11:54:48.435Z",
+        "updatedAt": "2025-09-22T11:54:48.435Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
+      },
+      {
+        "uid": "68d226096892cc2adc916926",
+        "status": "QUEUED",
+        "createdAt": "2025-09-23T04:46:01.023Z",
+        "updatedAt": "2025-09-23T04:46:01.023Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
+      },
+      {
+        "uid": "68d244936892cc2adc916aaf",
+        "status": "QUEUED",
+        "createdAt": "2025-09-23T06:56:19.941Z",
+        "updatedAt": "2025-09-23T06:56:19.941Z",
+        "commitMessage": "Triggered By File Upload",
+        "deploymentUrl": "jewelry-chatbot-website.eu-contentstackapps.com",
+        "__typename": "Deployment"
+      }
+    ],
+    "build": {
+      "command": "npm run build",
+      "outputDirectory": "dist"
+    },
+    "routes": [
+      {
+        "path": "/*",
+        "destination": "/index.html"
       }
     ]
   }

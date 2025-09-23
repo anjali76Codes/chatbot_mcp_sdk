@@ -56,10 +56,15 @@ function App() {
     <div className="app">
       <h1>My Website</h1>
       {/* Your application content */}
-      <ChatWindow 
-        apiBaseUrl="https://your-backend-api.com"
-        title="Customer Support"
-      />
+      
+     {/* Floating Chat Window - appears on all pages */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <ChatWindow 
+          apiBaseUrl={import.meta.env.VITE_API_BASE_URL}
+          title="Jewelry Assistant"
+          position="bottom-right"
+        />
+      </div>
     </div>
   );
 }
@@ -86,13 +91,15 @@ function Website() {
     <div>
       <header>My Website Header</header>
       <main>Website Content</main>
-      <ChatWindow 
-        apiBaseUrl="https://api.example.com/chat"
-        title="Support Assistant"
-        position="bottom-right"
-        streaming={true}
-        placeholder="How can I help you today?"
-      />
+      {/* Floating Chat Window - appears on all pages */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <ChatWindow 
+          apiBaseUrl={import.meta.env.VITE_API_BASE_URL}
+          streaming={true}
+          title="Jewelry Assistant"
+          position="bottom-right"
+        />
+      </div>
     </div>
   );
 }

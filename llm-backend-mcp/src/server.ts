@@ -6,11 +6,40 @@ import cors from 'cors';
 const app = express();
 const port = process.env.PORT || 3001;
 
+// ✅ FIXED CORS CONFIGURATION
+const corsOptions = {
+  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    // Allow all origins for development, specific ones for production
+    if (!origin || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      const allowedOrigins = [
+        'https://jewelry-chatbot-website.eu-contentstackapps.com',
+        // Add other production domains here
+      ];
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+  credentials: true,
+  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// ✅ HANDLE PREFLIGHT REQUESTS EXPLICITLY
+app.options('*', cors(corsOptions)); // This handles ALL OPTIONS requests
+
 // Middleware
-app.use(cors());
 app.use(express.json());
 
-// dotenv
+// dotenv configuration
 if (process.env.NODE_ENV !== 'production') {
   import('dotenv').then(dotenv => dotenv.config());
 }
@@ -195,12 +224,6 @@ app.post('/v1/clear-cache', (req, res) => {
   res.json({ status: 'Cache cleared' });
 });
 
-
-
-
-
-
-
 // Analytics endpoints
 app.get('/api/analytics/overview', (req, res) => {
   try {
@@ -301,9 +324,6 @@ app.post('/api/analytics/reset', (req, res) => {
     res.status(500).json({ error: 'Failed to reset analytics' });
   }
 });
-
-
-
 
 // Start server
 initializeServer().then(() => {

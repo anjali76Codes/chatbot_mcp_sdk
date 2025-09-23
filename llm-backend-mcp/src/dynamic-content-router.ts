@@ -476,6 +476,7 @@ INSTRUCTIONS:
 5. No markdown formatting
 6. Don't mention content types or technical details
 7. If contact information is requested, provide specific details from the content
+8. Use Indian currency format (₹ instead of $)
 
 YOUR RESPONSE:`.trim();
 

@@ -7,11 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "serve dist -s"
   },
   "dependencies": {
     "@contentstack/delivery-sdk": "^4.9.0",
-    "angupta-chat-sdk": "^0.1.14",
+    "angupta-chat-sdk": "^0.1.17",
     "axios": "^1.11.0",
     "contentstack": "^3.26.2",
     "react": "^19.1.1",
@@ -36,5 +37,8 @@
   "resolutions": {
     "react": "19.1.1",
     "react-dom": "19.1.1"
+  },
+  "engines": {
+    "node": "20.x"
   }
 }
