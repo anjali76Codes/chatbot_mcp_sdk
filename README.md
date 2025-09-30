@@ -247,7 +247,7 @@ AI: "The necklace costs ₹15,999 (original $190)"
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/your-org/chatbot_mcp_sdk.git
+git clone https://github.com/anjali76Codes/chatbot_mcp_sdk
 cd chatbot_mcp_sdk
 ```
 
